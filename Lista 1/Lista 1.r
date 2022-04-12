@@ -32,3 +32,5 @@ tauchen <- function(grid, sigma = 0.007, rho = 0.95, m = 3){
 
 probs_tauchen <- tauchen(gridify(9))
 
+
+
