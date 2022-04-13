@@ -11,7 +11,7 @@
     }
 
     # função que vai trazer a matriz de transição 
-    tauchen <- function(grid, sigma = 0.007, rho = 0.95, m = 3) { 
+    tauchen <- function(grid, sigma = 0.007, rho = 0.95, m = 3) {
         
         delta = (max(grid) - min(grid)) / (length(grid) - 1) # tamanho dos saltos entre os pontos do grid
 
@@ -32,3 +32,5 @@
 
     probs_tauchen <- tauchen(gridify(9))
     round_tauchen <- round(probs_tauchen, digits = 3)
+
+    
