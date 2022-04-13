@@ -63,5 +63,8 @@ sigma <- 0.007
 
 # Simulando o Tauchen
 
-    tauchen_sim <- function(n, rho = 0.95, sigma = 0.007){}
+    tauchen_sim <- function(n, rho = 0.95, sigma = 0.007, seed = 27){
+        set.seed(seed)
+        
+    }
 
