@@ -1,9 +1,18 @@
-using Pkg, Distributions, Random
+using Distributions, Random, Plots
+Pkg.add("DataFrames")
+Pkg.add("CSV")
+Pkg.add("Plots")
+Pkg.add("Lathe")
+Pkg.add("GLM")
+Pkg.add("StatsPlots")
+Pkg.add("MLBase")
 
+rho = 0.95
+sigma = 0.007
 # Método de Tauchen:
 
     # função que vai criar o grid, dados os parâmetros
-    gridify = function (n, sigma = 0.007, rho = 0.95, m = 3)
+    gridify = function (n; sigma = 0.007, rho = 0.95, m = 3)
         theta_max = m * sigma / (sqrt(1 - rho^2)) # definindo o maior valor do grid
         theta_min = - theta_max # definindo o menor valor do grid
 
@@ -11,7 +20,8 @@ using Pkg, Distributions, Random
     end
 
     # função que vai computar as probabilidades de transição dado o grid e os parâmetros
-    tauchen = function (grid, sigma = 0.007, rho = 0.95, m = 3) 
+    tauchen = function (grid; sigma = 0.007, rho = 0.95, m = 3, seed = 27)
+        Random.seed!(seed) 
         d = Normal() # d vira normal(0,1), que será usado para computar a PDF dos erros na hora de achar as probabilidades de transição
         delta = (maximum(grid) - minimum(grid)) / (length(grid) - 1) # distância dos pontos subsequentes do grid
 
@@ -33,3 +43,29 @@ using Pkg, Distributions, Random
 
     probs_tauchen = tauchen(gridify(9))
     round_tauchen = map(x -> round(x, digits = 3), probs_tauchen)
+
+
+# Simulando o AR(1)
+    # Cria n valores de um AR(1) utilizando a formula de que y_t = sum_i theta^(t-i) e_i, i = 1, ..., t, assumindo que y_1 = e_1
+    ar1 = function(n; rho = 0.95, sigma = 0.007, seed = 27) 
+        if rho == 1
+            error("rho must be other than 1")
+        end
+        
+        Random.seed!(seed)
+        errors = rand(Normal(0, sigma^2), n)
+        rhos = rho .^ (0:(n - 1))
+        rhos_inverse = 1 ./ rhos
+
+        if rho > 1
+            coef_mat = rhos*transpose(rhos_inverse) .* (rhos*transpose(rhos_inverse) .>= 1)      
+        else 
+            coef_mat = rhos*transpose(rhos_inverse) .* (rhos*transpose(rhos_inverse) .<= 1)
+        end
+
+        sample = coef_mat * errors
+
+    return sample
+    end
+
+plot(ar1(10000))
