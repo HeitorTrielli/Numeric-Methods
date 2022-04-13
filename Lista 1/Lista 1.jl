@@ -1,11 +1,4 @@
 using Distributions, Random, Plots
-Pkg.add("DataFrames")
-Pkg.add("CSV")
-Pkg.add("Plots")
-Pkg.add("Lathe")
-Pkg.add("GLM")
-Pkg.add("StatsPlots")
-Pkg.add("MLBase")
 
 rho = 0.95
 sigma = 0.007
