@@ -18,7 +18,7 @@
         
         vec_1 <- pnorm((min(grid) - rho * grid + delta / 2) / sigma) # vetor de transição para o menor valor do grid dado cada estado anterior; pnorm(x) retorna a cdf da normal no valor x
         vec_N <- 1 - pnorm((max(grid) - rho * grid - delta / 2) / sigma) # análogo para o maior valor do grid
-        grid_interno <- grid[2:(length(grid)-1)] # valores não extremos do grid
+        grid_interno <- grid[2:(length(grid) - 1)] # valores não extremos do grid
 
         # função que retorna o vetor de transição para o estado (não extremo) j dado cada estado anterior
         pij <- function(j, i = grid){ 

@@ -17,7 +17,7 @@ using Pkg, Distributions, Random
 
         vec_1 = cdf(d,((minimum(grid) .- rho * grid .+ delta / 2) / sigma)) # vetor das probabilidades de ir para o menor valor do grid, dado cada estado anterior do grid; cdf(d, x) retorna a cdf da distribuição d no valor x
         vec_N = 1 .- cdf(d,((maximum(grid) .- rho * grid .- delta / 2) / sigma)) # análogo para o maior valor do grid
-        grid_interno = grid[2:(length(grid)-1)] # valores não extremos do grid
+        grid_interno = grid[2:(length(grid) - 1)] # valores não extremos do grid
 
         pij = function(j, i = grid) # função que vai computar o vetor de probabilidades de ir para o estado (não extremo) j dado cada estado anterior do grid
             cdf(d,((j .+ delta/2 .- rho * i) / sigma)) - cdf(d,((j .- delta / 2 .- rho * i) / sigma))                             
@@ -32,4 +32,4 @@ using Pkg, Distributions, Random
     end
 
     probs_tauchen = tauchen(gridify(9))
-    round_tauchen = map(x -> round(x, digits =3), probs_tauchen)
+    round_tauchen = map(x -> round(x, digits = 3), probs_tauchen)
