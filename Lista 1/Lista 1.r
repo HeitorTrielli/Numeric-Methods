@@ -1,10 +1,12 @@
+library(dplyr)
+
 rho <- 0.95
 sigma <- 0.007
 
 # Método de Tauchen
 
     # função que vai fazer o grid de n pontos, dados os parâmetros
-    gridify <- function(n, sigma = 0.007, rho = 0.95, m = 3) {
+    tauchen_grid <- function(n, sigma = 0.007, rho = 0.95, m = 3) {
         theta_max <- m * sigma / sqrt(1 - rho^2)
         theta_min <- - theta_max
 
@@ -31,7 +33,7 @@ sigma <- 0.007
         return(cbind(vec_1, mat_interna, vec_n)) # combinando as transições extremas com as não extremas
     }
 
-    probs_tauchen <- tauchen(gridify(9))
+    probs_tauchen <- tauchen(tauchen_grid(9))
     round_tauchen <- round(probs_tauchen, digits = 3) # arredondando em três casas decimais
 
 
@@ -61,10 +63,16 @@ sigma <- 0.007
     plot(ar1(10000, rho = 0.95), type = 'l')
 
 
-# Simulando o Tauchen
+# Simulando o por transição
+###########################################################################################
+########################## Checar como fazer simulação de Markov ##########################
+###########################################################################################
 
-    tauchen_sim <- function(n, rho = 0.95, sigma = 0.007, seed = 27){
-        set.seed(seed)
+
+    transic <- function(n, rho = 0.95, sigma = 0.007, seed = 27, grid_len = 9, initial_value_coordinate = ceiling(grid_len)/2, tauchen = TRUE){       
         
-    }
+        if (tauchen == TRUE){
+        grid <- tauchen_grid(grid_len)
 
+        }
+        set.seed(seed)
