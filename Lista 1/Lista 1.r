@@ -28,18 +28,13 @@ sigma <- 0.007
             pnorm((j + delta / 2 - rho * i) / sigma) - pnorm((j - delta / 2 - rho * i) / sigma)
         }
 
-    # Vetor dos valores não extremos do grid
-    grid_interno <- grid[2:(length(grid)-1)] # valores não extremos do grid
+        mat_interna <- sapply(grid_interno, pij)
 
         return(cbind(vec_1, mat_interna, vec_n)) # combinando as transições extremas com as não extremas
     }
 
     probs_tauchen <- tauchen(tauchen_grid(9))
     round_tauchen <- round(probs_tauchen, digits = 3) # arredondando em três casas decimais
-
-
-    return(cbind(vec_1, mat_interna, vec_n)) # combinando as transições extremas com as não extremas
-    }
 
 # Simulando o AR(1)
 

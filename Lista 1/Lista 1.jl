@@ -5,7 +5,7 @@ sigma = 0.007
 # Método de Tauchen:
 
     # função que vai criar o grid, dados os parâmetros
-    gridify = function (n; sigma = 0.007, rho = 0.95, m = 3)
+        gridify = function (n; sigma = 0.007, rho = 0.95, m = 3)
         theta_max = m * sigma / (sqrt(1 - rho^2)) # definindo o maior valor do grid
         theta_min = - theta_max # definindo o menor valor do grid
 
@@ -61,4 +61,4 @@ sigma = 0.007
     return sample
     end
 
-plot(ar1(10000))
+plot(ar1(12000))
