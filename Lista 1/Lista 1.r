@@ -1,46 +1,88 @@
 library(dplyr)
+library(stats)
 
 rho <- 0.95
 sigma <- 0.007
 mu <- 0
-
+################
+## Questão 1: ##
+################
 # Método de Tauchen
-
-    # função que vai fazer o grid de n pontos, dados os parâmetros
-    tauchen_grid <- function(n, mu = 0, sigma = 0.007, rho = 0.95, m = 3) {
+    # função que vai trazer a matriz de transição e o grid
+    tauchen <- function(grid_len, mu = 0, sigma = 0.007, rho = 0.95, m = 3) {
         if (rho >= 1){stop("Para aplicar Tauchen, a série deve ser estacionária")}
+        
         theta_max <- m * sigma / sqrt(1 - rho^2) + mu
         theta_min <- - theta_max
+        grid <- seq(theta_min, theta_max, length.out = grid_len) # dividindo [theta_min, theta_max] em n pontos
 
-        grid <- seq(theta_min, theta_max, length.out = n) # dividindo [theta_min, theta_max] em n pontos
-        return(grid)
-    }
-
-    # função que vai trazer a matriz de transição
-    tauchen <- function(n, mu = 0, sigma = 0.007, rho = 0.95, m = 3, seed = 27, grid_len = 9) {
-        grid <- tauchen_grid(grid_len)
         delta <- (max(grid) - min(grid)) / (length(grid) - 1) # tamanho dos saltos entre os pontos do grid
 
-        set.seed(seed)
         vec_1 <- pnorm((min(grid) - rho * grid + delta / 2) / sigma, mu) # vetor de transição para o menor valor do grid dado cada estado anterior; pnorm(x) retorna a cdf da normal no valor x
         vec_n <- 1 - pnorm((max(grid) - rho * grid - delta / 2) / sigma, mu) # análogo para o maior valor do grid
-        grid_interno <- grid[2:(length(grid) - 1)] # valores não extremos do grid
+        
+        if(grid_len > 2){
 
-        # função que retorna o vetor de transição para o estado (não extremo) j dado cada estado anterior
-        pij <- function(j, i = grid) {
-            pnorm((j + delta / 2 - rho * i) / sigma, mu) - pnorm((j - delta / 2 - rho * i) / sigma, mu)
-        }
+            grid_interno <- grid[2:(length(grid) - 1)] # valores não extremos do grid
 
-        mat_interna <- sapply(grid_interno, pij)
+            # função que retorna o vetor de transição para o estado (não extremo) j dado cada estado anterior
+            pij <- function(j, i = grid) {
+                pnorm((j + delta / 2 - rho * i) / sigma, mu) - pnorm((j - delta / 2 - rho * i) / sigma, mu)
+            }
 
-        return(list(prob = cbind(vec_1, mat_interna, vec_n), grid = grid)) # combinando as transições extremas com as não extremas
-    }
+            mat_interna <- sapply(grid_interno, pij)
+
+            return(list(probs = cbind(vec_1, mat_interna, vec_n), grid = grid)) # combinando as transições extremas com as não extremas 
+        } else {
+            return(list(probs = cbind(vec_1, vec_n), grid = grid))
+        } # else
+
+    } # function
+
+    tauchen_grid <- tauchen(9)$grid
+    tauchen_pdf <- tauchen(9)$probs
+    tauchen_round <- round(tauchen_pdf, digits = 3) # arredondando em três casas decimais
+
+    
+################
+## Questão 2: ##
+################
+# Método de Rouwenhorst
+    rouwenhorst <- function(grid_len, mu = 0, sigma = 0.007, rho = 0.95){
+        
+        # Fazendo o grid
+        theta_max <- (sigma/sqrt(1-rho^2)) * sqrt(grid_len-1)
+        theta_min <- - theta_max
+        grid <- seq(theta_min, theta_max, length.out = grid_len)
 
 
+        # Fazendo a matriz de transição
+        p1 <- (1+rho)/2
+        p <- matrix(c(p1, 1-p1, 1-p1, p1), nrow = 2)
 
-    tauchen_pdf <- tauchen(9)[[1]]
-    round_tauchen <- round(tauchen_pdf, digits = 3) # arredondando em três casas decimais
+        if(grid_len >= 3){
 
+            for (i in 3:grid_len){
+                z1 <- cbind(rbind(p, 0), 0) # adciona um vetor de zeros em baixo de p, depois adciona a direita
+                z2 <- rbind(cbind(0, p), 0) # análogo
+                z3 <- cbind(rbind(0, p), 0) # análogo
+                z4 <- cbind(0, rbind(0, p)) # análogo
+
+                p <- p1*(z1 + z4) + (1-p1)*(z2 + z3)
+            } #for
+        } #if
+        return(list(probs = p/rowSums(p), grid = grid))
+
+    } #function 
+
+    rouwen_grid <- rouwenhorst(9)$grid
+    rouwen_probs <- rouwenhorst(9)$probs
+    rouwen_round <- round(rouwen_probs, digits = 3)
+
+    
+################
+## Questão 3: ##
+################
 # Simulando o AR(1)
 
     # Cria n valores de um AR(1) utilizando a formula de que y_t = sum_i theta^(t-i) e_i, i = 1, ..., t, assumindo que y_1 = e_1
@@ -52,61 +94,155 @@ mu <- 0
 
         for (i in 2:n){
             sample[i] = mu + rho*sample[i-1] + errors[i]
-        }
+        } # for
         return(list(sample = sample, errors = errors))
+    } # function 
+
+
+# Simulando os Markov:
+    
+    transic <- function(n, mu = 0, rho = 0.95, sigma = 0.007, seed = 27, grid_len = 9, type = 'tauchen', m = 3) {
+
+        erro <- ar1(n, mu = mu, rho = rho, sigma = sigma, seed = seed)$errors
+
+        if(type == 'tauchen'){
+            tauch <- tauchen(grid_len, mu = mu, rho = rho, sigma = sigma, m = m)
+            grid <- tauch$grid
+            probs <- tauch$probs
+
+            sim <- c()
+            sim[1] <- grid[which(abs(grid-erro[1])== min(abs(grid-erro[1])))]
+
+            # A simulação escolhe theta_i como o valor do grid mais perto de E(theta_i|theta_{i-1}) + erro[i]
+            for (i in 2:n){
+                sim[i] <- grid[which(abs(grid - erro[i] - weighted.mean(grid, probs[which(grid == sim[i-1]),]))==min(abs(grid - erro[i] - weighted.mean(grid, probs[which(grid == sim[i-1]),]))))]
+            } # for
+            
+            return(sim)
+
+        } else if (type == 'rouwen') { # Análogo à simulação de Tauchen
+
+            rouwen <- rouwenhorst(grid_len, mu = mu, rho = rho, sigma = sigma)
+            grid <- rouwen$grid
+            probs <- rouwen$probs
+
+            sim <- c()
+            sim[1] <- grid[which(abs(grid - erro[1]) == min(abs(grid - erro[1])))]
+
+            for (i in 2:n){
+                sim[i] <- grid[which(abs(grid - erro[i] - weighted.mean(grid, probs[which(grid == sim[i-1]),])) == min(abs(grid - erro[i] - weighted.mean(grid, probs[which(grid == sim[i-1]),]))))]
+            } # for
+            return(sim)
+
+        } else {stop('Escolha um dos métodos estudados')}
+    } # function 
+
+# plotando para comparar
+
+ar_sim <- ar1(10000)$sample
+tauch_sim <- transic(10000)
+rouwen_sim <- transic(10000, type = 'rouwen')
+
+plot(ar_sim, type = 'l')
+lines(tauch_sim, col = 'red')
+
+plot(ar_sim, type = 'l')
+lines(rouwen_sim, col = 'blue')
+
+
+################
+## Questão 4: ##
+################
+
+# Regressão do Tauchen:
+
+lm(tauch_sim ~ lag(tauch_sim) - 1)
+
+
+# Regressão do Rouwenhorst
+
+lm(rouwen_sim ~ lag(rouwen_sim) - 1)
+
+
+
+
+################
+## Questão 5: ##
+################
+
+# Tauchen:
+
+tauchen_grid_2 <- tauchen(9, rho = 0.99)$grid
+tauchen_probs_2 <- tauchen(9, rho = 0.99)$probs
+
+ar_sim_2 <- ar1(10000, rho = 0.99)$sample
+tauch_sim_2 <- transic(10000, rho = 0.99)
+
+lm(tauch_sim_2 ~ lag(tauch_sim_2) - 1)
+
+plot(ar_sim_2, type = 'l')
+lines(tauch_sim_2, col = 'red')
+
+# Rouwenhorst
+rouwen_grid_2 <- rouwenhorst(9, rho = 0.99)$grid
+rouwen_probs_2 <- rouwenhorst(9, rho = 0.99)$probs
+
+rouwen_sim_2 <- transic(10000, rho = 0.99, type = 'rouwen')
+
+lm(rouwen_sim_2 ~ lag(rouwen_sim_2) - 1)
+
+plot(ar_sim_2, type = 'l')
+lines(transic(10000, rho = 0.99, type = 'rouwen'), col = 'blue')
+
+
+
+
+
+
+
+grid <- tauchen(9)$grid
+grid[grid == grid[6]]
+
+?sample
+
+
+    transic_2 <- function(n, mu = 0, rho = 0.95, sigma = 0.007, seed = 27, grid_len = 9, type = 'tauchen', m = 3) {
+
+        erro <- ar1(n, mu = mu, rho = rho, sigma = sigma, seed = seed)$errors
+
+        if(type == 'tauchen'){
+            set.seed(seed)
+            tauch <- tauchen(grid_len, mu = mu, rho = rho, sigma = sigma, m = m)
+            grid <- tauch$grid
+            probs <- tauch$probs
+
+            sim <- c()
+            sim[1] <- grid[which(abs(grid-erro[1])== min(abs(grid-erro[1])))]
+
+            # A simulação escolhe theta_i como o valor do grid mais perto de E(theta_i|theta_{i-1}) + erro[i]
+            for (i in 2:n){
+                test <- sample(grid, prob = probs[which(grid == sim[i-1]),])
+                sim[i] <- grid[which(abs(grid - erro[i] - test)) == min(abs(grid - erro[i] - test)))]
+            }
+            
+            return(sim)
+
+        } else if (type == 'rouwen') { # Análogo à simulação de Tauchen
+
+            rouwen <- rouwenhorst(grid_len, mu = mu, rho = rho, sigma = sigma)
+            grid <- rouwen$grid
+            probs <- rouwen$probs
+
+            sim <- c()
+            sim[1] <- grid[which(abs(grid - erro[1]) == min(abs(grid - erro[1])))]
+
+            for (i in 2:n){
+                sim[i] <- grid[which(abs(grid - erro[i] - weighted.mean(grid, probs[which(grid == sim[i-1]),])) == min(abs(grid - erro[i] - weighted.mean(grid, probs[which(grid == sim[i-1]),]))))]
+            }
+            return(sim)
+
+        } else {stop('Escolha um dos métodos estudados')}
     }
 
-# Simulando o por transição
-
-
-    transic <- function(n, mu = 0, rho = 0.95, sigma = 0.007, seed = 27, grid_len = 9, tauchen = TRUE){       
-        if(grid_len <= 2){
-            stop('Escolha ao menos três pontos')
-        }
-
-        if (tauchen == TRUE){
-        grid <- tauchen_grid(grid_len, mu = mu, rho = rho, sigma = sigma)
-        grid_interno <- grid[2:(length(grid)-1)]
-        delta <- (max(grid) - min(grid))/(length(grid)-1)
-        ar <- ar1(n, mu = mu, rho = rho, sigma = sigma, seed = seed)
-        ar_sim <- ar$sample
-        errors <- ar$errors
-
-        v1 <- min(grid)*(ar_sim <= min(grid)+delta/2)
-        vn <- max(grid)*(ar_sim >= max(grid)-delta/2)
-        v_int <- sapply(grid_interno, function(x){x*(ar_sim > x-delta/2)*(ar_sim < x+delta/2)})
-
-        return( v1 + rowSums(v_int) + vn )
-        }
-    }
-
-
-    transic_cezar <- function(n, mu = 0, rho = 0.95, sigma = 0.007, seed = 27, grid_len = 9, tauchen = TRUE){ 
-
-        tauchen_pdf <- tauchen(grid_len)[[1]]
-        tauchen_cdf <- matrix(0, grid_len, grid_len)
-        errors <- ar1(n)$errors
-
-        tauchen_cdf[,1] <- tauchen_pdf[,1]
-        for (i in 2:grid_len){
-        tauchen_cdf[,i] <- rowSums(tauchen_pdf[,1:i])
-        }
-
-        grid[which(abs(grid-errors[1])==min(grid-errors[1]))
-
-
-        return(tauchen_cdf)
-    }
-
-
-
-
-max(between(0.95*ar1(10000)[[1]] + ar1(10000)[[2]], grid[3], grid[4]))
-
-
-
-
-
-
-
-
+plot(ar_sim, type = 'l')
+lines(transic_2(10000))

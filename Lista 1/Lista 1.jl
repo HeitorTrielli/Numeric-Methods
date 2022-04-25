@@ -5,17 +5,13 @@ sigma = 0.007
 
 # Método de Tauchen:
 
-    # função que vai criar o grid, dados os parâmetros
-        tauchen_grid = function (n; mu = 0, sigma = 0.007, rho = 0.95, m = 3)
+# Função que vai computar as probabilidades de transição e o grid
+    tauchen = function (grid_len; mu = 0, sigma = 0.007, rho = 0.95, m = 3)
+
         theta_max = m * sigma / (sqrt(1 - rho^2)) + mu # definindo o maior valor do grid
         theta_min = - theta_max # definindo o menor valor do grid
+        grid = LinRange(theta_min, theta_max, grid_len) # Cria um vetor de n pontos entre theta_max e theta_min em que a distancia entre os pontos sequencias é igual
 
-        return LinRange(theta_min, theta_max, n) # Cria um vetor de n pontos entre theta_max e theta_min em que a distancia entre os pontos sequencias é igual
-    end
-
-    # função que vai computar as probabilidades de transição dado o grid e os parâmetros
-    tauchen = function (grid; mu = 0, sigma = 0.007, rho = 0.95, m = 3, seed = 27)
-        Random.seed!(seed) 
         d = Normal(mu, 1) # d vira normal(mu,1), que será usado para computar a PDF dos erros na hora de achar as probabilidades de transição
         delta = (maximum(grid) - minimum(grid)) / (length(grid) - 1) # distância dos pontos subsequentes do grid
 
@@ -28,19 +24,58 @@ sigma = 0.007
         end
 
         mat_interna = reduce(hcat, map(pij, grid_interno)) # map: aplica pij em cada ponto do grid interno; reduce: transforma o vetor de vetores que vem do map em uma matriz
+        
+        probs = [vec_1 mat_interna vec_N] # gerando a matriz de transição
 
-        CP = [vec_1 mat_interna vec_N] # combinando os vetores de transição para ter a matriz de transição
-
-        return CP
+        return probs, grid
             
     end
+    
 
-    
-    
-    probs_tauchen = tauchen(gridify(9))
+    probs_tauchen, grid_tauchen = tauchen(9)
     round_tauchen = map(x -> round(x, digits = 3), probs_tauchen)
 
+
+    teste = [zeros(2) p]
+
+    zero
     
+    [p zero]
+    
+    zeros(2)
+    zeros(3)'
+    
+    [[zeros(2) p]; zeros(3)']
+    
+    z2 = [[zeros(2) p]
+    z4 = [zeros(3)'; [zeros(2) p]]
+    z1 = [[p zeros(2)]; zeros(3)']
+
+
+    # Método de Rouwenhorst
+
+    rouwenhorst = function (grid_len; mu = 0, sigma = 0.007, rho = 0.95)
+        theta_max = (sigma/sqrt(1-rho^2)) * sqrt(grid_len-1)
+        theta_min = - theta_max
+        grid = LinRange(theta_min, theta_max, grid_len)
+
+        p1 = (1+rho)/2
+        p = [p1 (1 - p1) ; (1 - p1) p1]
+    
+        for i in 3:grid_len
+            z1 = [[p zeros(i-1)]; zeros(i)']
+            z2 = [[zeros(i-1) p]; zeros(i)']
+            z3 = [zeros(i)'; [p zeros(i-1)]]
+            z4 = [zeros(i)'; [zeros(i-1) p]]
+
+            
+        end
+    end
+
+
+ 
+
+
 # Simulando o AR(1)
     # Cria n valores de um AR(1) utilizando a formula de que y_t = sum_i theta^(t-i) e_i, i = 1, ..., t, assumindo que y_1 = e_1
     ar1 = function(n; mu = 0, rho = 0.95, sigma = 0.007, seed = 27) 
@@ -53,8 +88,15 @@ sigma = 0.007
             append!(sample, mu + rho*sample[i-1] + errors[i])
         end
 
-        return(sample)
-
-
     return sample
     end
+
+
+
+
+plot(ar1(10000))
+
+
+
+
+
