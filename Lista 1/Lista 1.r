@@ -40,10 +40,9 @@ mu <- 0
     } # function
 
     tauchen_grid <- tauchen(9)$grid
-    tauchen_pdf <- tauchen(9)$probs
-    tauchen_round <- round(tauchen_pdf, digits = 3) # arredondando em três casas decimais
+    tauchen_probs <- tauchen(9)$probs
+    tauchen_round <- round(tauchen_probs, digits = 3) # arredondando em três casas decimais
 
-    
 ################
 ## Questão 2: ##
 ################
@@ -79,7 +78,8 @@ mu <- 0
     rouwen_probs <- rouwenhorst(9)$probs
     rouwen_round <- round(rouwen_probs, digits = 3)
 
-    
+rouwenhorst(9)[[1]]
+
 ################
 ## Questão 3: ##
 ################
@@ -149,6 +149,7 @@ lines(tauch_sim, col = 'red')
 plot(ar_sim, type = 'l')
 lines(rouwen_sim, col = 'blue')
 
+plot(transic(10000, grid_len = 4))
 
 ################
 ## Questão 4: ##
@@ -246,3 +247,9 @@ grid[grid == grid[6]]
 
 plot(ar_sim, type = 'l')
 lines(transic_2(10000))
+
+
+plot(transic(10000, type = "rouwen", grid_len = 4), type = 'l')
+lines(transic(10000, type = "tauchen", grid_len = 4), col = 'blue')
+
+rouwenhorst(3)$grid

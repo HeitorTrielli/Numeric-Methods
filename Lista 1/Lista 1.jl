@@ -1,4 +1,5 @@
-using Distributions, Random, Plots
+using Distributions, Random, Plots, Pkg
+
 
 rho = 0.95
 sigma = 0.007
@@ -16,41 +17,26 @@ sigma = 0.007
         delta = (maximum(grid) - minimum(grid)) / (length(grid) - 1) # distância dos pontos subsequentes do grid
 
         vec_1 = cdf(d,((minimum(grid) .- rho * grid .+ delta / 2) / sigma)) # vetor das probabilidades de ir para o menor valor do grid, dado cada estado anterior do grid; cdf(d, x) retorna a cdf da distribuição d no valor x
-        vec_N = 1 .- cdf(d,((maximum(grid) .- rho * grid .- delta / 2) / sigma)) # análogo para o maior valor do grid
+        vec_n = 1 .- cdf(d,((maximum(grid) .- rho * grid .- delta / 2) / sigma)) # análogo para o maior valor do grid
         grid_interno = grid[2:(length(grid) - 1)] # valores não extremos do grid
 
         pij = function(j, i = grid) # função que vai computar o vetor de probabilidades de ir para o estado (não extremo) j dado cada estado anterior do grid
             cdf(d,((j .+ delta/2 .- rho * i) / sigma)) - cdf(d,((j .- delta / 2 .- rho * i) / sigma))                             
         end
 
-        mat_interna = reduce(hcat, map(pij, grid_interno)) # map: aplica pij em cada ponto do grid interno; reduce: transforma o vetor de vetores que vem do map em uma matriz
+        mat_interna = reduce(hcat, pij.(grid_interno))  # aplica pij em cada ponto do grid interno; reduce: transforma o vetor de vetores em uma matriz
         
-        probs = [vec_1 mat_interna vec_N] # gerando a matriz de transição
+        probs = [vec_1 mat_interna vec_n] # gerando a matriz de transição
 
         return probs, grid
             
     end
+
+    tauchen(3)[2]
     
 
-    probs_tauchen, grid_tauchen = tauchen(9)
-    round_tauchen = map(x -> round(x, digits = 3), probs_tauchen)
-
-
-    teste = [zeros(2) p]
-
-    zero
-    
-    [p zero]
-    
-    zeros(2)
-    zeros(3)'
-    
-    [[zeros(2) p]; zeros(3)']
-    
-    z2 = [[zeros(2) p]
-    z4 = [zeros(3)'; [zeros(2) p]]
-    z1 = [[p zeros(2)]; zeros(3)']
-
+    tauchen_probs, tauchen_grid = tauchen(9)
+    tauchen_round = round.(tauchen_probs, digits = 3)
 
     # Método de Rouwenhorst
 
@@ -61,19 +47,24 @@ sigma = 0.007
 
         p1 = (1+rho)/2
         p = [p1 (1 - p1) ; (1 - p1) p1]
-    
-        for i in 3:grid_len
-            z1 = [[p zeros(i-1)]; zeros(i)']
-            z2 = [[zeros(i-1) p]; zeros(i)']
-            z3 = [zeros(i)'; [p zeros(i-1)]]
-            z4 = [zeros(i)'; [zeros(i-1) p]]
+        if grid_len > 2
+            for i in 3:grid_len
+                z1 = [[p zeros(i-1)]; zeros(i)']
+                z2 = [[zeros(i-1) p]; zeros(i)']
+                z3 = [zeros(i)'; [p zeros(i-1)]]
+                z4 = [zeros(i)'; [zeros(i-1) p]]
 
-            
-        end
-    end
+                p = p1*(z1 + z4) + (1-p1)*(z2+z3)
+            end # for
+        end # if
+        
+        transition_matrix = p./(sum(p, dims = 2))
+        
+        return transition_matrix, grid
+    end # function
 
-
- 
+    rouwenhorst_probs, rouwenhorst_grid = rouwenhorst(9)
+    rouwenhorst_round = round.(rouwenhorst_probs, digits = 3)
 
 
 # Simulando o AR(1)
@@ -87,16 +78,41 @@ sigma = 0.007
         for i in 2:n
             append!(sample, mu + rho*sample[i-1] + errors[i])
         end
-
-    return sample
+        
+        return sample, errors
     end
 
 
+    # Simulando os Markov 
+    transic = function(n; mu = 0, rho = 0.95, sigma = 0.007, seed = 27, grid_len = 9, type = "tauchen", m = 3)
+        erro = ar1(n)[2]
 
+        if type == "tauchen"
+            probs, grid = tauchen(grid_len, mu = mu, rho = rho, sigma = sigma, m = m)
 
-plot(ar1(10000))
+            sim = zeros(n)
+            sim[1] = grid[findmin(abs.(grid .- erro[1]))[2]]
+            
+            for i in 2:n
+                sim[i] = grid[findmin(abs.(grid .- erro[i] .- probs[findall(x -> x == sim[i-1], grid),:]*grid))[2]]
+            end #for
+        
+        elseif type == "rouwen"
+            probs, grid = rouwenhorst(grid_len, mu = mu, rho = rho, sigma = sigma)
 
+            sim = zeros(n)
+            sim[1] = grid[findmin(abs.(grid .- erro[1]))[2]]
+            
+            for i in 2:n
+                sim[i] = grid[findmin(abs.(grid .- erro[i] .- probs[findall(x -> x == sim[i-1], grid),:]*grid))[2]]
+            end # for
 
+        else  
+            error("Escolha um dos métodos estudados")
+        end # if-elseif
 
+        return sim
+    end
 
+plot(transic(10000, type = "tauchen", grid_len = 4))
 
