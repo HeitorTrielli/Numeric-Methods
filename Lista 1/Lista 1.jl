@@ -1,4 +1,5 @@
-using Distributions, Random, Plots, Pkg
+using Distributions, Random, Plots, GLM, Pkg, DataFrames # Pacotes que eu vou usar
+
 
 
 rho = 0.95
@@ -115,4 +116,9 @@ sigma = 0.007
     end
 
 plot(transic(10000, type = "tauchen", grid_len = 4))
+
+
+df = DataFrame(x = teste, lagx = lag(teste))
+
+lm(@formula(x ~ lagx), df)
 
