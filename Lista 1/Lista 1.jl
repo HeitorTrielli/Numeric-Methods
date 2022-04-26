@@ -122,3 +122,47 @@ df = DataFrame(x = teste, lagx = lag(teste))
 
 lm(@formula(x ~ lagx), df)
 
+
+
+transic_cdf = function(n; mu = 0, rho = 0.95, sigma = 0.007, seed = 27, grid_len = 9, type = "tauchen", m = 3)
+    erro = ar1(n)[2]
+    cdf_erro = cdf.(Normal(0, sigma), erro)
+
+    if type == "tauchen"
+        probs, grid = tauchen(grid_len, mu = mu, rho = rho, sigma = sigma, m = m)
+        
+        CDF = zeros(grid_len, grid_len)
+        for i in 1:grid_len
+            CDF[:,i] = sum(probs[:,1:i], dims = 2)
+        end
+
+        sim = zeros(n)
+        sim[1] = grid[findmin(abs.(grid .- erro[1]))[2]]
+        
+        for i in 2:n
+            sim[i] = grid[minimum([sum(CDF[findall(x-> x == sim[i-1], grid),:] .<= cdf_erro[i])+1, grid_len])]
+        end #for
+    
+    elseif type == "rouwen"
+        probs, grid = rouwenhorst(grid_len, mu = mu, rho = rho, sigma = sigma)
+
+        CDF = zeros(grid_len, grid_len)
+        for i in 1:grid_len
+            CDF[:,i] = sum(probs[:,1:i], dims = 2)
+        end
+
+        sim = zeros(n)
+        sim[1] = grid[findmin(abs.(grid .- erro[1]))[2]]
+        
+        for i in 2:n
+            sim[i] = grid[minimum([sum(CDF[findall(x-> x == sim[i-1], grid),:] .<= cdf_erro[i])+1, grid_len])]
+        end # for
+
+    else  
+        error("Escolha um dos métodos estudados")
+    end # if-elseif
+
+    return sim
+end
+
+

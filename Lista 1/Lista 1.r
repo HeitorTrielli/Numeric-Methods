@@ -78,7 +78,6 @@ mu <- 0
     rouwen_probs <- rouwenhorst(9)$probs
     rouwen_round <- round(rouwen_probs, digits = 3)
 
-rouwenhorst(9)[[1]]
 
 ################
 ## Questão 3: ##
@@ -100,114 +99,7 @@ rouwenhorst(9)[[1]]
 
 
 # Simulando os Markov:
-    
-    transic <- function(n, mu = 0, rho = 0.95, sigma = 0.007, seed = 27, grid_len = 9, type = 'tauchen', m = 3) {
-
-        erro <- ar1(n, mu = mu, rho = rho, sigma = sigma, seed = seed)$errors
-
-        if(type == 'tauchen'){
-            tauch <- tauchen(grid_len, mu = mu, rho = rho, sigma = sigma, m = m)
-            grid <- tauch$grid
-            probs <- tauch$probs
-
-            sim <- c()
-            sim[1] <- grid[which(abs(grid-erro[1])== min(abs(grid-erro[1])))]
-
-            # A simulação escolhe theta_i como o valor do grid mais perto de E(theta_i|theta_{i-1}) + erro[i]
-            for (i in 2:n){
-                sim[i] <- grid[which(abs(grid - erro[i] - weighted.mean(grid, probs[which(grid == sim[i-1]),]))==min(abs(grid - erro[i] - weighted.mean(grid, probs[which(grid == sim[i-1]),]))))]
-            } # for
-            
-            return(sim)
-
-        } else if (type == 'rouwen') { # Análogo à simulação de Tauchen
-
-            rouwen <- rouwenhorst(grid_len, mu = mu, rho = rho, sigma = sigma)
-            grid <- rouwen$grid
-            probs <- rouwen$probs
-
-            sim <- c()
-            sim[1] <- grid[which(abs(grid - erro[1]) == min(abs(grid - erro[1])))]
-
-            for (i in 2:n){
-                sim[i] <- grid[which(abs(grid - erro[i] - weighted.mean(grid, probs[which(grid == sim[i-1]),])) == min(abs(grid - erro[i] - weighted.mean(grid, probs[which(grid == sim[i-1]),]))))]
-            } # for
-            return(sim)
-
-        } else {stop('Escolha um dos métodos estudados')}
-    } # function 
-
-# plotando para comparar
-
-ar_sim <- ar1(10000)$sample
-tauch_sim <- transic(10000)
-rouwen_sim <- transic(10000, type = 'rouwen')
-
-plot(ar_sim, type = 'l')
-lines(tauch_sim, col = 'red')
-
-plot(ar_sim, type = 'l')
-lines(rouwen_sim, col = 'blue')
-
-plot(transic(10000, grid_len = 4))
-
-################
-## Questão 4: ##
-################
-
-# Regressão do Tauchen:
-
-lm(tauch_sim ~ lag(tauch_sim) - 1)
-
-
-# Regressão do Rouwenhorst
-
-lm(rouwen_sim ~ lag(rouwen_sim) - 1)
-
-
-
-
-################
-## Questão 5: ##
-################
-
-# Tauchen:
-
-tauchen_grid_2 <- tauchen(9, rho = 0.99)$grid
-tauchen_probs_2 <- tauchen(9, rho = 0.99)$probs
-
-ar_sim_2 <- ar1(10000, rho = 0.99)$sample
-tauch_sim_2 <- transic(10000, rho = 0.99)
-
-lm(tauch_sim_2 ~ lag(tauch_sim_2) - 1)
-
-plot(ar_sim_2, type = 'l')
-lines(tauch_sim_2, col = 'red')
-
-# Rouwenhorst
-rouwen_grid_2 <- rouwenhorst(9, rho = 0.99)$grid
-rouwen_probs_2 <- rouwenhorst(9, rho = 0.99)$probs
-
-rouwen_sim_2 <- transic(10000, rho = 0.99, type = 'rouwen')
-
-lm(rouwen_sim_2 ~ lag(rouwen_sim_2) - 1)
-
-plot(ar_sim_2, type = 'l')
-lines(transic(10000, rho = 0.99, type = 'rouwen'), col = 'blue')
-
-
-
-n = 10000
-mu = 0
-rho = 0.95
-sigma = 0.007
-seed = 27
-
-
-        erro <- ar1(n, mu = mu, rho = rho, sigma = sigma, seed = seed)$errors
-        cdf_erro <- pnorm(erro, 0, sigma)
-
-transic_cdf <- function(n, mu = 0, rho = 0.95, sigma = 0.007, seed = 27, grid_len = 9, type = 'tauchen', m = 3) {
+ transic <- function(n, mu = 0, rho = 0.95, sigma = 0.007, seed = 27, grid_len = 9, type = 'tauchen', m = 3) {
 
         erro <- ar1(n, mu = mu, rho = rho, sigma = sigma, seed = seed)$errors
         cdf_erro <- pnorm(erro, mu, sigma)
@@ -249,35 +141,65 @@ transic_cdf <- function(n, mu = 0, rho = 0.95, sigma = 0.007, seed = 27, grid_le
         }
 
     return(sim)
+ }
+# plotando para comparar
 
-} # function
-seed <- 130
-plot(ar1(10000, rho = 0.99, seed = seed)[[1]], type = 'l')
-lines(transic(10000, rho = 0.99, type = 'rouwen', seed = seed), col = 'red')
-lines(transic_cdf(10000, rho = 0.99, type = 'rouwen', seed = seed), col = 'blue')
+ar_sim <- ar1(10000)$sample
+tauch_sim <- transic(10000)
+rouwen_sim <- transic(10000, type = 'rouwen')
+
+plot(ar_sim, type = 'l')
+lines(tauch_sim, col = 'red')
+
+plot(ar_sim, type = 'l')
+lines(rouwen_sim, col = 'blue')
+
+
+################
+## Questão 4: ##
+################
+
+# Regressão do Tauchen:
+
+lm(tauch_sim ~ lag(tauch_sim) - 1)
+
+
+# Regressão do Rouwenhorst
+
+lm(rouwen_sim ~ lag(rouwen_sim) - 1)
 
 
 
-grid_len <- 9
-mu <- 0 
-rho <- 0.95
-sigma <- 0.007
-m <- 3
 
-            tauch <- tauchen(grid_len, mu = mu, rho = rho, sigma = sigma, m = m)
-            grid <- tauch$grid
-            probs <- tauch$probs
+################
+## Questão 5: ##
+################
 
-            cdf <- probs
-            for (i in 2:grid_len){
-                cdf[,i] <- rowSums(probs[,1:i])
-            } #for cdf
+# Tauchen:
 
-            sim <- c()
-            sim[1] <- grid[which(abs(grid-erro[1])== min(abs(grid-erro[1])))]
+tauchen_grid_2 <- tauchen(9, rho = 0.99)$grid
+tauchen_probs_2 <- tauchen(9, rho = 0.99)$probs
 
-            for (i in 2:n){
-                sim[i] <- grid[min(sum(cdf[which(grid == sim[i-1]),] <= cdf_erro[i])+1, grid_len)]
-            } # for sim
+ar_sim_2 <- ar1(10000, rho = 0.99)$sample
+tauch_sim_2 <- transic(10000, rho = 0.99)
+
+lm(tauch_sim_2 ~ lag(tauch_sim_2))
+
+
+plot(ar_sim_2, type = 'l')
+lines(tauch_sim_2, col = 'red')
+
+# Rouwenhorst
+rouwen_grid_2 <- rouwenhorst(9, rho = 0.99)$grid
+rouwen_probs_2 <- rouwenhorst(9, rho = 0.99)$probs
+
+rouwen_sim_2 <- transic(10000, rho = 0.99, type = 'rouwen')
+
+lm(rouwen_sim_2 ~ lag(rouwen_sim_2) - 1)
+
+plot(ar_sim_2, type = 'l')
+lines(transic(10000, rho = 0.99, type = 'rouwen'), col = 'blue')
+
+
 
 
