@@ -197,59 +197,87 @@ lines(transic(10000, rho = 0.99, type = 'rouwen'), col = 'blue')
 
 
 
+n = 10000
+mu = 0
+rho = 0.95
+sigma = 0.007
+seed = 27
 
-
-
-
-grid <- tauchen(9)$grid
-grid[grid == grid[6]]
-
-?sample
-
-
-    transic_2 <- function(n, mu = 0, rho = 0.95, sigma = 0.007, seed = 27, grid_len = 9, type = 'tauchen', m = 3) {
 
         erro <- ar1(n, mu = mu, rho = rho, sigma = sigma, seed = seed)$errors
+        cdf_erro <- pnorm(erro, 0, sigma)
 
-        if(type == 'tauchen'){
-            set.seed(seed)
+transic_cdf <- function(n, mu = 0, rho = 0.95, sigma = 0.007, seed = 27, grid_len = 9, type = 'tauchen', m = 3) {
+
+        erro <- ar1(n, mu = mu, rho = rho, sigma = sigma, seed = seed)$errors
+        cdf_erro <- pnorm(erro, mu, sigma)
+        
+        if (type == 'tauchen'){
+
             tauch <- tauchen(grid_len, mu = mu, rho = rho, sigma = sigma, m = m)
             grid <- tauch$grid
             probs <- tauch$probs
 
+            cdf <- probs
+            for (i in 2:grid_len){
+                cdf[,i] <- rowSums(probs[,1:i])
+            } #for cdf
+
             sim <- c()
             sim[1] <- grid[which(abs(grid-erro[1])== min(abs(grid-erro[1])))]
 
-            # A simulação escolhe theta_i como o valor do grid mais perto de E(theta_i|theta_{i-1}) + erro[i]
             for (i in 2:n){
-                test <- sample(grid, prob = probs[which(grid == sim[i-1]),])
-                sim[i] <- grid[which(abs(grid - erro[i] - test)) == min(abs(grid - erro[i] - test)))]
-            }
+                sim[i] <- grid[min(sum(cdf[which(grid == sim[i-1]),] <= cdf_erro[i])+1, grid_len)]
+            } # for sim
+        } else if (type == 'rouwen'){
             
-            return(sim)
-
-        } else if (type == 'rouwen') { # Análogo à simulação de Tauchen
-
             rouwen <- rouwenhorst(grid_len, mu = mu, rho = rho, sigma = sigma)
             grid <- rouwen$grid
             probs <- rouwen$probs
 
+            cdf <- probs
+            for (i in 2:grid_len){
+                cdf[,i] <- rowSums(probs[,1:i])
+            } #for cdf
+
             sim <- c()
-            sim[1] <- grid[which(abs(grid - erro[1]) == min(abs(grid - erro[1])))]
+            sim[1] <- grid[which(abs(grid-erro[1])== min(abs(grid-erro[1])))]
 
             for (i in 2:n){
-                sim[i] <- grid[which(abs(grid - erro[i] - weighted.mean(grid, probs[which(grid == sim[i-1]),])) == min(abs(grid - erro[i] - weighted.mean(grid, probs[which(grid == sim[i-1]),]))))]
-            }
-            return(sim)
+                sim[i] <- grid[min(sum(cdf[which(grid == sim[i-1]),] <= cdf_erro[i])+1, grid_len)]
+            } # for sim
+        }
 
-        } else {stop('Escolha um dos métodos estudados')}
-    }
+    return(sim)
 
-plot(ar_sim, type = 'l')
-lines(transic_2(10000))
+} # function
+seed <- 130
+plot(ar1(10000, rho = 0.99, seed = seed)[[1]], type = 'l')
+lines(transic(10000, rho = 0.99, type = 'rouwen', seed = seed), col = 'red')
+lines(transic_cdf(10000, rho = 0.99, type = 'rouwen', seed = seed), col = 'blue')
 
 
-plot(transic(10000, type = "rouwen", grid_len = 4), type = 'l')
-lines(transic(10000, type = "tauchen", grid_len = 4), col = 'blue')
 
-rouwenhorst(3)$grid
+grid_len <- 9
+mu <- 0 
+rho <- 0.95
+sigma <- 0.007
+m <- 3
+
+            tauch <- tauchen(grid_len, mu = mu, rho = rho, sigma = sigma, m = m)
+            grid <- tauch$grid
+            probs <- tauch$probs
+
+            cdf <- probs
+            for (i in 2:grid_len){
+                cdf[,i] <- rowSums(probs[,1:i])
+            } #for cdf
+
+            sim <- c()
+            sim[1] <- grid[which(abs(grid-erro[1])== min(abs(grid-erro[1])))]
+
+            for (i in 2:n){
+                sim[i] <- grid[min(sum(cdf[which(grid == sim[i-1]),] <= cdf_erro[i])+1, grid_len)]
+            } # for sim
+
+
