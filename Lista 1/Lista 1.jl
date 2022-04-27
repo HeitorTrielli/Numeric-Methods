@@ -1,7 +1,5 @@
 using Distributions, Random, Plots, GLM, Pkg, DataFrames, PrettyTables, RegressionTables # Pacotes que eu vou usar
 
-
-
 ################
 ## Questão 1: ##
 ################
@@ -146,7 +144,6 @@ using Distributions, Random, Plots, GLM, Pkg, DataFrames, PrettyTables, Regressi
     plot([ar_sim, rouwen_sim], label = ["AR(1)" "Rouwenhorst"])
 
     # MQE
-
     pretty_table([mean((ar_sim - tauch_sim).^2) mean((ar_sim - rouwen_sim).^2)], header = ["Tauchen", "Rouwenhorst"])
 
 
@@ -170,36 +167,33 @@ using Distributions, Random, Plots, GLM, Pkg, DataFrames, PrettyTables, Regressi
 ################
     # Tauchen:
     # Grid e transição
-    tauchen_grid_2 = tauchen(9, rho = 0.99)[2]
-    tauchen_probs_2 = tauchen(9, rho = 0.99)[1]
+    tauchen_grid_2 = tauchen(9, rho = 0.99)[2];
+    tauchen_probs_2 = tauchen(9, rho = 0.99)[1];
 
     # Simulações
-    ar_sim_2 = ar1(10000, rho = 0.99)[1]
-    tauch_sim_2 = transic(10000, rho = 0.99)
+    ar_sim_2 = ar1(10000, rho = 0.99)[1];
+    tauch_sim_2 = transic(10000, rho = 0.99);
 
     # Plotando
     plot([ar_sim_2 tauch_sim_2], label = ["AR(1)" "Tauchen"])
 
     # Rouwenhorst
-    rouwen_grid_2 = rouwenhorst(9, rho = 0.99)[2]
-    rouwen_probs_2 = rouwenhorst(9, rho = 0.99)[1]
+    rouwen_grid_2 = rouwenhorst(9, rho = 0.99)[2];
+    rouwen_probs_2 = rouwenhorst(9, rho = 0.99)[1];
 
-    rouwen_sim_2 = transic(10000, rho = 0.99, method = "rouwen")
+    rouwen_sim_2 = transic(10000, rho = 0.99, method = "rouwen");
 
     plot([ar_sim_2 rouwen_sim_2], label = ["AR(1)" "Rouwenhorst"])
 
-
-    #Regressões
-    df_2 = DataFrame(Tauchen = tauch_sim_2, LagTauchen = lag(tauch_sim_2), Rouwenhorst = rouwen_sim_2, LagRouwen = lag(rouwen_sim_2))
-
-    # Regressão do Tauchen
-    tauchen_reg_2 = lm(@formula(Tauchen ~ 0 + LagTauchen), df_2)
-
-    # Regressão do Rouwenhorst
-    rouwen_reg_2 = lm(@formula(Rouwenhorst ~ 0 + LagRouwen), df_2)
-
-    regtable(tauchen_reg_2, rouwen_reg_2)
-
     pretty_table([mean((ar_sim - tauch_sim_2).^2) mean((ar_sim - rouwen_sim_2).^2)], header = ["Tauchen", "Rouwenhorst"])
 
-    
+    #Regressões
+    df_2 = DataFrame(Tauchen = tauch_sim_2, LagTauchen = lag(tauch_sim_2), Rouwenhorst = rouwen_sim_2, LagRouwen = lag(rouwen_sim_2));
+
+    # Regressão do Tauchen
+    tauchen_reg_2 = lm(@formula(Tauchen ~ 0 + LagTauchen), df_2);
+
+    # Regressão do Rouwenhorst
+    rouwen_reg_2 = lm(@formula(Rouwenhorst ~ 0 + LagRouwen), df_2);
+
+    regtable(tauchen_reg_2, rouwen_reg_2)
