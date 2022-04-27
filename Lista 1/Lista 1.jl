@@ -1,9 +1,10 @@
-using Distributions, Random, Plots, GLM, Pkg, DataFrames # Pacotes que eu vou usar
+using Distributions, Random, Plots, GLM, Pkg, DataFrames, PrettyTables, RegressionTables # Pacotes que eu vou usar
+
+
 
 ################
 ## Questão 1: ##
 ################
-
     # Método de Tauchen:
     # Função que vai computar as probabilidades de transição e o grid
     tauchen = function (grid_len; mu = 0, sigma = 0.007, rho = 0.95, m = 3)
@@ -29,21 +30,20 @@ using Distributions, Random, Plots, GLM, Pkg, DataFrames # Pacotes que eu vou us
 
         return probs, grid
             
-    end
+    end;
 
-    tauchen_probs, tauchen_grid = tauchen(9)
-    tauchen_round = round.(tauchen_probs, digits = 3) # Arredondando para ficar mais legível
+    tauchen_probs, tauchen_grid = tauchen(9);
+    tauchen_round = round.(tauchen_probs, digits = 3); # Arredondando para ficar mais legível
 
 ################
 ## Questão 2: ##
 ################
-
     # Método de Rouwenhorst
     # Função que vai computar as probabilidades de transição e o grid.
     rouwenhorst = function (grid_len; mu = 0, sigma = 0.007, rho = 0.95)
         # Fazendo o grid
-        theta_max = (sigma/sqrt(1-rho^2)) * sqrt(grid_len-1)
-        theta_min = - theta_max
+        theta_max = (sigma/sqrt(1-rho^2)) * sqrt(grid_len-1) + mu
+        theta_min = - theta_max + 2 * mu
         grid = LinRange(theta_min, theta_max, grid_len)
 
         # Computando a matriz de transição de Rouwenhorst
@@ -64,19 +64,18 @@ using Distributions, Random, Plots, GLM, Pkg, DataFrames # Pacotes que eu vou us
         transition_matrix = p./(sum(p, dims = 2)) # Normalizando a matriz para cada linha somar 1
         
         return transition_matrix, grid
-    end # function
+    end; # function
 
-    rouwenhorst_probs, rouwenhorst_grid = rouwenhorst(9)
-    rouwenhorst_round = round.(rouwenhorst_probs, digits = 3) # Arredondando para ficar mais legível
+    rouwenhorst_probs, rouwenhorst_grid = rouwenhorst(9);
+    rouwenhorst_round = round.(rouwenhorst_probs, digits = 3); # Arredondando para ficar mais legível
 
 
 ################
 ## Questão 3: ##
 ################
-
     # Simulando o AR(1)
     # Cria n valores de um AR(1) utilizando a formula de que y_t = sum_i theta^(t-i) e_i, i = 1, ..., t, assumindo que y_1 = e_1
-    ar1 = function(n; mu = 0, rho = 0.95, sigma = 0.007, seed = 27) 
+    ar1 = function(n; mu = 0, rho = 0.95, sigma = 0.007, seed = 999) 
        
         Random.seed!(seed) # escolhe o seed
         errors = rand(Normal(0, sigma), n) # gerando vetor de erros
@@ -90,11 +89,11 @@ using Distributions, Random, Plots, GLM, Pkg, DataFrames # Pacotes que eu vou us
         
         return sample, errors
 
-    end # function
+    end; # function
 
 
     # Simulando os métodos discretizados 
-    transic = function(n; mu = 0, rho = 0.95, sigma = 0.007, seed = 27, grid_len = 9, method = "tauchen", m = 3)
+    transic = function(n; mu = 0, rho = 0.95, sigma = 0.007, seed = 999, grid_len = 9, method = "tauchen", m = 3)
         
         erro = ar1(n)[2] # Choques do AR(1)
         cdf_erro = cdf.(Normal(0, sigma), erro) # Tomando o valor da CDF da normal(0, sigma^2) nos choques
@@ -128,7 +127,7 @@ using Distributions, Random, Plots, GLM, Pkg, DataFrames # Pacotes que eu vou us
             sim[1] = grid[findmin(abs.(grid .- erro[1]))[2]]
             
             for i in 2:n
-                sim[i] = grid[minimum([sum(CDF[findall(x-> x == sim[i-1], grid),:] .<= cdf_erro[i])+1, grid_len])]
+                sim[i] = grid[minimum([sum(CDF[findall(x-> x == sim[i-1], grid),:] .< cdf_erro[i])+1, grid_len])]
             end # for
     
         else  
@@ -136,39 +135,43 @@ using Distributions, Random, Plots, GLM, Pkg, DataFrames # Pacotes que eu vou us
         end # if - elseif - else
     
         return sim
-    end # function
+    end; # function
 
     # plotando para comparar
-    ar_sim = ar1(10000)[1]
-    tauch_sim = transic(10000)
-    rouwen_sim = transic(10000, method = "rouwen", rho = 0.99)
+    ar_sim = ar1(10000)[1];
+    tauch_sim = transic(10000);
+    rouwen_sim = transic(10000, method = "rouwen");
 
     plot([ar_sim, tauch_sim], label = ["AR(1)" "Tauchen"])
     plot([ar_sim, rouwen_sim], label = ["AR(1)" "Rouwenhorst"])
+
+    # MQE
+
+    pretty_table([mean((ar_sim - tauch_sim).^2) mean((ar_sim - rouwen_sim).^2)], header = ["Tauchen", "Rouwenhorst"])
+
 
 
 ################
 ## Questão 4: ##
 ################
-
     # Fazendo o dataframe para as regressões:
-    df = DataFrame(Tauch = tauch_sim, lagtauch = lag(tauch_sim), Rouwen = rouwen_sim, lagrouwen = lag(rouwen_sim))
+    df = DataFrame(Tauchen = tauch_sim, LagTauchen = lag(tauch_sim), Rouwenhorst = rouwen_sim, LagRouwen = lag(rouwen_sim));
 
     # Regressão do Tauchen
-    lm(@formula(Tauch ~ 0 + lagtauch), df)
+    tauchen_reg = lm(@formula(Tauchen ~ 0 + LagTauchen), df);
 
     # Regressão do Rouwenhorst
-    lm(@formula(Rouwen ~ 0 + lagrouwen), df)
+    rouwen_reg = lm(@formula(Rouwenhorst ~ 0 + LagRouwen), df);
 
-
+    regtable(tauchen_reg, rouwen_reg)
+    
 ################
 ## Questão 5: ##
 ################
-
     # Tauchen:
     # Grid e transição
-    tauchen_grid_2 = tauchen(9, rho = 0.99)[1]
-    tauchen_probs_2 = tauchen(9, rho = 0.99)[2]
+    tauchen_grid_2 = tauchen(9, rho = 0.99)[2]
+    tauchen_probs_2 = tauchen(9, rho = 0.99)[1]
 
     # Simulações
     ar_sim_2 = ar1(10000, rho = 0.99)[1]
@@ -178,8 +181,8 @@ using Distributions, Random, Plots, GLM, Pkg, DataFrames # Pacotes que eu vou us
     plot([ar_sim_2 tauch_sim_2], label = ["AR(1)" "Tauchen"])
 
     # Rouwenhorst
-    rouwen_grid_2 = rouwenhorst(9, rho = 0.99)[1]
-    rouwen_probs_2 = rouwenhorst(9, rho = 0.99)[2]
+    rouwen_grid_2 = rouwenhorst(9, rho = 0.99)[2]
+    rouwen_probs_2 = rouwenhorst(9, rho = 0.99)[1]
 
     rouwen_sim_2 = transic(10000, rho = 0.99, method = "rouwen")
 
@@ -187,12 +190,16 @@ using Distributions, Random, Plots, GLM, Pkg, DataFrames # Pacotes que eu vou us
 
 
     #Regressões
-    df_2 = DataFrame(Tauch = tauch_sim_2, lagtauch = lag(tauch_sim_2), Rouwen = rouwen_sim_2, lagrouwen = lag(rouwen_sim_2))
+    df_2 = DataFrame(Tauchen = tauch_sim_2, LagTauchen = lag(tauch_sim_2), Rouwenhorst = rouwen_sim_2, LagRouwen = lag(rouwen_sim_2))
 
     # Regressão do Tauchen
-    lm(@formula(Tauch ~ 0 + lagtauch), df_2)
+    tauchen_reg_2 = lm(@formula(Tauchen ~ 0 + LagTauchen), df_2)
 
     # Regressão do Rouwenhorst
-    lm(@formula(Rouwen ~ 0 + lagrouwen), df_2)
+    rouwen_reg_2 = lm(@formula(Rouwenhorst ~ 0 + LagRouwen), df_2)
 
+    regtable(tauchen_reg_2, rouwen_reg_2)
 
+    pretty_table([mean((ar_sim - tauch_sim_2).^2) mean((ar_sim - rouwen_sim_2).^2)], header = ["Tauchen", "Rouwenhorst"])
+
+    

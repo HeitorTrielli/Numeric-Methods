@@ -1,4 +1,6 @@
-library(dplyr, stats)
+library(dplyr)
+library(stats)
+library(stargazer)
 
 ################
 ## Questão 1: ##
@@ -6,7 +8,7 @@ library(dplyr, stats)
     # Método de Tauchen
     # função que vai trazer a matriz de transição e o grid
     tauchen <- function(grid_len, mu = 0, sigma = 0.007, rho = 0.95, m = 3) {
-        if (rho >= 1){stop("Para aplicar Tauchen, a série deve ser estacionária")}
+        if (rho >= 1){stop("Para aplicar Tauchen, a série deve ser estacionária")};
         
         theta_max <- m * sigma / sqrt(1 - rho^2) + mu
         theta_min <- - theta_max + 2 * mu
@@ -39,6 +41,7 @@ library(dplyr, stats)
     tauchen_probs <- tauchen(9)$probs
     tauchen_round <- round(tauchen_probs, digits = 3) # Arredondando para ficar mais legível
 
+
 ################
 ## Questão 2: ##
 ################
@@ -47,8 +50,8 @@ library(dplyr, stats)
     rouwenhorst <- function(grid_len, mu = 0, sigma = 0.007, rho = 0.95){
         
         # Fazendo o grid
-        theta_max <- (sigma/sqrt(1-rho^2)) * sqrt(grid_len-1)
-        theta_min <- - theta_max
+        theta_max <- (sigma/sqrt(1-rho^2)) * sqrt(grid_len-1) + mu
+        theta_min <- - theta_max + 2 * mu
         grid <- seq(theta_min, theta_max, length.out = grid_len)
 
 
@@ -84,7 +87,7 @@ library(dplyr, stats)
 ################
     # Simulando o AR(1)
     # Cria n valores de um AR(1) utilizando a formula de que y_t = sum_i theta^(t-i) e_i, i = 1, ..., t, assumindo que y_1 = e_1
-    ar1 <- function(n, mu = 0, rho = 0.95, sigma = 0.007, seed = 27) {
+    ar1 <- function(n, mu = 0, rho = 0.95, sigma = 0.007, seed = 9) {
         
         set.seed(seed) # escolhe o seed
         errors <- rnorm(n, 0, sigma) # gerando vetor de erros
@@ -101,7 +104,7 @@ library(dplyr, stats)
 
 
     # Simulando os métodos discretizados:
-    transic <- function(n, mu = 0, rho = 0.95, sigma = 0.007, seed = 27, grid_len = 9, method = 'tauchen', m = 3) {
+    transic <- function(n, mu = 0, rho = 0.95, sigma = 0.007, seed = 9, grid_len = 9, method = 'tauchen', m = 3) {
 
         erro <- ar1(n, mu = mu, rho = rho, sigma = sigma, seed = seed)$errors  # Choques do AR(1)
         cdf_erro <- pnorm(erro, mu, sigma) # Tomando o valor da CDF da normal(0, sigma^2) nos choques
@@ -140,7 +143,7 @@ library(dplyr, stats)
             sim[1] <- grid[which(abs(grid-erro[1])== min(abs(grid-erro[1])))]
 
             for (i in 2:n){
-                sim[i] <- grid[min(sum(cdf[which(grid == sim[i-1]),] <= cdf_erro[i])+1, grid_len)]
+                sim[i] <- grid[min(sum(cdf[which(grid == sim[i-1]),] < cdf_erro[i])+1, grid_len)]
             } # for sim
         } # if - else if
 
@@ -158,11 +161,17 @@ library(dplyr, stats)
     plot(ar_sim, type = 'l')
     lines(rouwen_sim, col = 'blue')
 
+    # MQE:
+    # Tauchen
+    mean((ar_sim - tauch_sim)^2)
+
+    # Rouwenhorst
+    mean((ar_sim - rouwen_sim)^2)
+
 
 ################
 ## Questão 4: ##
 ################
-
     # Regressão do Tauchen:
     lm(tauch_sim ~ lag(tauch_sim) - 1)
 
@@ -173,7 +182,6 @@ library(dplyr, stats)
 ################
 ## Questão 5: ##
 ################
-
     # Tauchen:
     # Grid e transição
     tauchen_grid_2 <- tauchen(9, rho = 0.99)$grid
@@ -204,3 +212,11 @@ library(dplyr, stats)
 
     # Regressão de Rouwenhorst
     lm(rouwen_sim_2 ~ lag(rouwen_sim_2) - 1)
+
+
+    # MQE:
+    # Tauchen
+    mean((ar_sim - tauch_sim_2)^2)
+
+    # Rouwenhorst
+    mean((ar_sim - rouwen_sim_2)^2)
