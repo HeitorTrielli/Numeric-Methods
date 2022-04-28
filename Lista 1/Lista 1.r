@@ -4,6 +4,7 @@ library(dplyr)
 library(stats)
 library(stargazer)
 
+
 ################
 ## Questão 1: ##
 ################
@@ -42,6 +43,8 @@ library(stargazer)
     tauchen_grid <- tauchen(9)$grid
     tauchen_probs <- tauchen(9)$probs
     tauchen_round <- round(tauchen_probs, digits = 3) # Arredondando para ficar mais legível
+
+    stargazer(tauchen_probs)
 
 
 ################
@@ -89,7 +92,7 @@ library(stargazer)
 ################
     # Simulando o AR(1)
     # Cria n valores de um AR(1) utilizando a formula de que y_t = sum_i theta^(t-i) e_i, i = 1, ..., t, assumindo que y_1 = e_1
-    ar1 <- function(n, mu = 0, rho = 0.95, sigma = 0.007, seed = 9) {
+    ar1 <- function(n, mu = 0, rho = 0.95, sigma = 0.007, seed = 999) {
         
         set.seed(seed) # escolhe o seed
         errors <- rnorm(n, 0, sigma) # gerando vetor de erros
@@ -106,7 +109,7 @@ library(stargazer)
 
 
     # Simulando os métodos discretizados:
-    transic <- function(n, mu = 0, rho = 0.95, sigma = 0.007, seed = 9, grid_len = 9, method = 'tauchen', m = 3) {
+    transic <- function(n, mu = 0, rho = 0.95, sigma = 0.007, seed = 999, grid_len = 9, method = 'tauchen', m = 3) {
 
         erro <- ar1(n, mu = mu, rho = rho, sigma = sigma, seed = seed)$errors  # Choques do AR(1)
         cdf_erro <- pnorm(erro, mu, sigma) # Tomando o valor da CDF da normal(0, sigma^2) nos choques
