@@ -1,3 +1,5 @@
+# Heitor Trielli Zanoni Ferreira - Código - Lista 1
+
 using Distributions, Random, Plots, GLM, Pkg, DataFrames, PrettyTables, RegressionTables # Pacotes que eu vou usar
 
 ################
@@ -135,11 +137,12 @@ using Distributions, Random, Plots, GLM, Pkg, DataFrames, PrettyTables, Regressi
         return sim
     end; # function
 
-    # plotando para comparar
+    # Simulando 
     ar_sim = ar1(10000)[1];
     tauch_sim = transic(10000);
     rouwen_sim = transic(10000, method = "rouwen");
 
+    # Plotando para comparar
     plot([ar_sim, tauch_sim], label = ["AR(1)" "Tauchen"])
     plot([ar_sim, rouwen_sim], label = ["AR(1)" "Rouwenhorst"])
 
@@ -160,6 +163,7 @@ using Distributions, Random, Plots, GLM, Pkg, DataFrames, PrettyTables, Regressi
     # Regressão do Rouwenhorst
     rouwen_reg = lm(@formula(Rouwenhorst ~ 0 + LagRouwen), df);
 
+    # Tabela com as regressões
     regtable(tauchen_reg, rouwen_reg)
     
 ################
@@ -170,7 +174,7 @@ using Distributions, Random, Plots, GLM, Pkg, DataFrames, PrettyTables, Regressi
     tauchen_grid_2 = tauchen(9, rho = 0.99)[2];
     tauchen_probs_2 = tauchen(9, rho = 0.99)[1];
 
-    # Simulações
+    # Simulando o AR(1) e Tauchen
     ar_sim_2 = ar1(10000, rho = 0.99)[1];
     tauch_sim_2 = transic(10000, rho = 0.99);
 
@@ -178,16 +182,20 @@ using Distributions, Random, Plots, GLM, Pkg, DataFrames, PrettyTables, Regressi
     plot([ar_sim_2 tauch_sim_2], label = ["AR(1)" "Tauchen"])
 
     # Rouwenhorst
+    # Grid e transição
     rouwen_grid_2 = rouwenhorst(9, rho = 0.99)[2];
     rouwen_probs_2 = rouwenhorst(9, rho = 0.99)[1];
 
+    # Simulação
     rouwen_sim_2 = transic(10000, rho = 0.99, method = "rouwen");
 
+    # Plotando
     plot([ar_sim_2 rouwen_sim_2], label = ["AR(1)" "Rouwenhorst"])
 
+    # Tabela com os MQE
     pretty_table([mean((ar_sim - tauch_sim_2).^2) mean((ar_sim - rouwen_sim_2).^2)], header = ["Tauchen", "Rouwenhorst"])
 
-    #Regressões
+    # Regressões
     df_2 = DataFrame(Tauchen = tauch_sim_2, LagTauchen = lag(tauch_sim_2), Rouwenhorst = rouwen_sim_2, LagRouwen = lag(rouwen_sim_2));
 
     # Regressão do Tauchen
@@ -196,4 +204,5 @@ using Distributions, Random, Plots, GLM, Pkg, DataFrames, PrettyTables, Regressi
     # Regressão do Rouwenhorst
     rouwen_reg_2 = lm(@formula(Rouwenhorst ~ 0 + LagRouwen), df_2);
 
+    # Tabela com as regressões
     regtable(tauchen_reg_2, rouwen_reg_2)

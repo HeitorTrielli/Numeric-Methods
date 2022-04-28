@@ -1,3 +1,5 @@
+# Heitor Trielli Zanoni Ferreira - Código - Lista 1
+
 library(dplyr)
 library(stats)
 library(stargazer)
@@ -150,11 +152,12 @@ library(stargazer)
         return(sim)
     } # function 
 
-    # plotando para comparar
+    # Simulando
     ar_sim <- ar1(10000)$sample
     tauch_sim <- transic(10000)
     rouwen_sim <- transic(10000, method = 'rouwen')
 
+    # Plotando para comparar
     plot(ar_sim, type = 'l')
     lines(tauch_sim, col = 'red')
 
