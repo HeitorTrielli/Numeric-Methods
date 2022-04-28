@@ -35,6 +35,7 @@ using Distributions, Random, Plots, GLM, Pkg, DataFrames, PrettyTables, Regressi
     tauchen_probs, tauchen_grid = tauchen(9);
     tauchen_round = round.(tauchen_probs, digits = 3); # Arredondando para ficar mais legível
 
+
 ################
 ## Questão 2: ##
 ################
@@ -150,7 +151,6 @@ using Distributions, Random, Plots, GLM, Pkg, DataFrames, PrettyTables, Regressi
     pretty_table([mean((ar_sim - tauch_sim).^2) mean((ar_sim - rouwen_sim).^2)], header = ["Tauchen", "Rouwenhorst"])
 
 
-
 ################
 ## Questão 4: ##
 ################
@@ -165,6 +165,7 @@ using Distributions, Random, Plots, GLM, Pkg, DataFrames, PrettyTables, Regressi
 
     # Tabela com as regressões
     regtable(tauchen_reg, rouwen_reg)
+    
     
 ################
 ## Questão 5: ##
