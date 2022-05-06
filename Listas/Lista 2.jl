@@ -1,6 +1,6 @@
-using Plots
+using Plots, BenchmarkTools
 
-include("D:/Users/b35529/Desktop/VSCode/Lista 1/Lista 1.jl"); # Para usar as funções definidas na lista 1
+include("Lista 1.jl"); # Para usar as funções definidas na lista 1
 
 # Definindo as variáveis
 beta, mu, alpha, delta, rho, sigma = 0.987, 2, 1/3, 0.012, 0.95, 0.007;
@@ -20,7 +20,149 @@ utility = function(c; mu = 2)
 end
 
 
-value_function = function(; z = grid_z, p_z = prob_z, k = grid_k, tol = 10e-4,
+# Brute Force
+value_function_brute = function(; z = grid_z, p_z = prob_z, k = grid_k, tol = 10e-4,
+    beta = 0.987, mu = 2, alpha = 1 / 3, delta = 0.012, rho = 0.95, sigma = 0.007, inert = 0)
+    
+    k_len = length(grid_k)
+    z_len = length(grid_z)
+
+    # Value function, policy function on c, policy function on k and variable for iteration
+    value, c, k_line, v_next = zeros(k_len, z_len), zeros(k_len, z_len), 
+                                zeros(k_len, z_len), zeros(k_len, z_len) 
+
+    error = 1
+    count = 0
+    while error > tol
+        value = copy((1 - inert)*v_next + inert*value)
+
+        for state in 1:z_len    
+            for capital in 1:k_len
+                
+                if count < 10000000
+                    k_possible = k[z[state]*(k[capital]^alpha) .- k .+ (1 - delta)*k[capital] .> 0]    # the values of asset for which the consumption is positive
+                    v_possible = value[z[state]*(k[capital]^alpha) .- k .+ (1 - delta)*k[capital] .> 0, :]    #the value function at each of the assets above              
+                else 
+                    k_possible = k[z[state]*(k[capital]^alpha) .- k .+ (1 - delta)*k[capital] .> 0 .&& k .>= k_line[capital, state]]    # the values of asset for which the consumption is positive
+                    v_possible = value[z[state]*(k[capital]^alpha) .- k .+ (1 - delta)*k[capital] .> 0 .&& k .>= k_line[capital, state], :]
+                end
+                
+                val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) .+ beta*v_possible*p_z[state, :]
+                v_next[capital, state] = maximum(val)
+                k_line[capital, state] = k_possible[argmax(val)]
+                c[capital, state] = z[state]*(k[capital]^alpha) - k_line[capital, state] + (1 - delta)* k[capital]
+            end # for k
+        end # for z
+        
+        error = maximum(abs.(value - v_next))
+        count = count + 1
+    end # while
+
+    return value, k_line, c
+end # function
+
+brute_force = @btime value_function_brute()
+brute_force_time = "47.414 seconds"
+
+# Exploiting monotonicity
+value_function_monotone = function(; z = grid_z, p_z = prob_z, k = grid_k, tol = 10e-4,
+    beta = 0.987, mu = 2, alpha = 1 / 3, delta = 0.012, rho = 0.95, sigma = 0.007, inert = 0)
+    
+    k_len = length(grid_k)
+    z_len = length(grid_z)
+
+    # Value function, policy function on c, policy function on k and variable for iteration
+    value, c, k_line, v_next = zeros(k_len, z_len), zeros(k_len, z_len), 
+                                zeros(k_len, z_len), zeros(k_len, z_len) 
+
+    error = 1
+    count = 0
+    while error > tol
+        value = copy((1 - inert)*v_next + inert*value)
+
+        for state in 1:z_len    
+            for capital in 1:k_len
+                
+                if count == 0
+                    k_possible = k[z[state]*(k[capital]^alpha) .- k .+ (1 - delta)*k[capital] .> 0]    # the values of asset for which the consumption is positive
+                    v_possible = value[z[state]*(k[capital]^alpha) .- k .+ (1 - delta)*k[capital] .> 0, :]    #the value function at each of the assets above              
+                else 
+                    k_possible = k[z[state]*(k[capital]^alpha) .- k .+ (1 - delta)*k[capital] .> 0 .&& k .>= k_line[capital, state]]    # the values of asset for which the consumption is positive
+                    v_possible = value[z[state]*(k[capital]^alpha) .- k .+ (1 - delta)*k[capital] .> 0 .&& k .>= k_line[capital, state], :]
+                end
+                
+                val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) .+ beta*v_possible*p_z[state, :]
+                v_next[capital, state] = maximum(val)
+                k_line[capital, state] = k_possible[argmax(val)]
+                c[capital, state] = z[state]*(k[capital]^alpha) - k_line[capital, state] + (1 - delta)* k[capital]
+            end # for k
+        end # for z
+        
+        error = maximum(abs.(value - v_next))
+        count = count + 1
+    end # while
+
+    return value, k_line, c
+end # function
+
+monotone = @btime value_function_monotone()
+
+plot(monotone[3])
+
+monotone_time = "32.139 seconds"
+
+
+# Accelerator
+value_function_accelerator = function(; z = grid_z, p_z = prob_z, k = grid_k, tol = 10e-4,
+    beta = 0.987, mu =2, alpha = 1 / 3, delta = 0.012, rho = 0.95, sigma = 0.007, inert = 0)
+    
+    k_len = length(grid_k)
+    z_len = length(grid_z)
+
+    # Value function, policy function on c, policy function on k and variable for iteration
+    value, c, k_line, v_next = zeros(k_len, z_len), zeros(k_len, z_len), 
+                                zeros(k_len, z_len), zeros(k_len, z_len) 
+
+    error = 1
+    count = 0
+
+    while error > tol
+        value = copy((1 - inert)*v_next + inert*value)
+        for state in 1:z_len    
+            for capital in 1:k_len
+                if count == 0
+                    k_possible = k[z[state]*(k[capital]^alpha) .- k .+ (1 - delta)*k[capital] .> 0]    # the values of asset for which the consumption is positive
+                    v_possible = value[z[state]*(k[capital]^alpha) .- k .+ (1 - delta)*k[capital] .> 0, :]    #the value function at each of the assets above              
+                else 
+                    k_possible = k[z[state]*(k[capital]^alpha) .- k .+ (1 - delta)*k[capital] .> 0 .&& k .>= k_line[capital, state]]    # the values of asset for which the consumption is positive
+                    v_possible = value[z[state]*(k[capital]^alpha) .- k .+ (1 - delta)*k[capital] .> 0 .&& k .>= k_line[capital, state], :]
+                end
+
+                if  count%10 == 0 || count < 20 
+                    val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) .+ beta*v_possible*p_z[state, :]
+                    v_next[capital, state] = maximum(val)
+                    k_line[capital, state] = k_possible[argmax(val)]
+                    c[capital, state] = z[state]*(k[capital]^alpha) - k_line[capital, state] + (1 - delta)* k[capital]
+                else
+                    v_next[capital, state] = utility(c[capital, state]) + beta*v_possible[state,:]'*p_z[state, :]
+                end # if
+            end # for k
+        end # for z
+        count = count + 1
+        error = maximum(abs.(value - v_next))
+
+        print(error, " ")
+
+    end # while
+
+    return value, k_line, c
+
+end # function
+
+value_function_accelerator()
+
+# Multi grid
+value_function_mg = function(g1, g2, g3; z = grid_z, p_z = prob_z, tol = 10e-4,
     beta = 0.987, mu =2, alpha = 1 / 3, delta = 0.012, rho = 0.95, sigma = 0.007)
     
     k_len = length(grid_k)
@@ -31,30 +173,31 @@ value_function = function(; z = grid_z, p_z = prob_z, k = grid_k, tol = 10e-4,
                                 zeros(k_len, z_len), zeros(k_len, z_len) 
 
     error = 1
-    iter = 0
+    count = 0
     while error > tol
         value = copy(v_next)
 
         for state in 1:z_len    
             for capital in 1:k_len
-                k_possible = k[z[state]*(k[capital]^alpha) .- k .+ (1 - delta)*k[capital] .> 0]    # the values of asset for which the consumption is positive
-                v_possible = value[z[state]*(k[capital]^alpha) .- k .+ (1 - delta)*k[capital] .> 0, :]    #the value function at each of the assets above              
-                val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) .+ beta*v_possible*p_z[state, :]
-                v_next[capital, state] = maximum(val)
-                k_line[capital, state] = k_possible[argmax(val)]
-                c[capital, state] = z[state]*(k[capital]^alpha) - k_line[capital, state] + (1 - delta)* k[capital]
+                if count % 10 == 0 || count < 20
+                    k_possible = k[z[state]*(k[capital]^alpha) .- k .+ (1 - delta)*k[capital] .> 0]    # the values of asset for which the consumption is positive
+                    v_possible = value[z[state]*(k[capital]^alpha) .- k .+ (1 - delta)*k[capital] .> 0, :]   #the value function at each of the assets above              
+                    val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) .+ beta*v_possible*p_z[state, :]
+                    v_next[capital, state] = maximum(val)
+                    k_line[capital, state] = k_possible[argmax(val)]
+                    c[capital, state] = z[state]*(k[capital]^alpha) - k_line[capital, state] + (1 - delta)* k[capital]
+                else
+                    v_next = utility.(c) + beta*p_z*value
+                end # if
             end # for k
         end # for z
         
         error = maximum(abs.(value - v_next))
-        iter = iter + 1
-        print(error, " ")
+        count = count + 1
     end # while
 
-    return value, k_line, c, (value - v_next)
+    return value, k_line, c
 end # function
 
+value_function_accelerator()
 
-teste = value_function()
-
-plot(teste[3])
