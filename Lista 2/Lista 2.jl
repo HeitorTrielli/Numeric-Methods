@@ -1,6 +1,6 @@
-using Plots
+using Plots, BenchmarkTools
 
-include("D:/Users/b35529/Desktop/VSCode/Lista 1/Lista 1.jl"); # Para usar as funções definidas na lista 1
+include("Lista 1/Lista 1.jl"); # Para usar as funções definidas na lista 1
 
 # Definindo as variáveis
 beta, mu, alpha, delta, rho, sigma = 0.987, 2, 1/3, 0.012, 0.95, 0.007;
