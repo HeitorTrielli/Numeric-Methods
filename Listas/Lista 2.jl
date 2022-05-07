@@ -1,4 +1,4 @@
-using Plots, BenchmarkTools # Pacotes que estou usando
+using Plots, BenchmarkTools, Distributions, Profile # Pacotes que estou usando
 
 Threads.nthreads()
 
@@ -44,7 +44,7 @@ utility = function(c; mu = 2)
 end;
 
 # Brute Force
-value_function_brute = function(;v_0 = v0, z = grid_z, p_z = prob_z, k = grid_k, tol = 10e-4,
+value_function_brute = function(;v_0 = v0, z = grid_z, p_z = prob_z, k = grid_k, tol = 1e-4,
     beta = 0.987, mu = 2, alpha = 1 / 3, delta = 0.012, rho = 0.95, sigma = 0.007, inert = 0)
     
     k_len = length(grid_k)
@@ -53,13 +53,11 @@ value_function_brute = function(;v_0 = v0, z = grid_z, p_z = prob_z, k = grid_k,
     # Value function, policy function on c, policy function on k and variable for iteration
     c, k_line, v_next = zeros(k_len, z_len), zeros(k_len, z_len), zeros(k_len, z_len)
     value = v_0
-
-    error = 1
     count = 0
+    error = 1
     while error > tol
-        value = copy((1 - inert)*v_next + inert*value)
 
-        for state in 1:z_len    
+        Threads.@threads for state in 1:z_len
             for capital in 1:k_len  
                 k_possible = k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0]    
                 v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0, :]               
@@ -69,19 +67,20 @@ value_function_brute = function(;v_0 = v0, z = grid_z, p_z = prob_z, k = grid_k,
                 c[capital, state] = z[state]*(k[capital]^alpha) - k_line[capital, state] + (1 - delta)* k[capital]
             end # for k
         end # for z
-        
         error = maximum(abs.(value - v_next))
+        value = copy((1 - inert)*v_next + inert*value)
+
         count = count + 1
     end # while
 
     return value, k_line, c
 end; # function
 
-brute_force = @time value_function_brute();
-brute_force_time = "18 seconds";
+brute_force = @time value_function_brute()
+brute_force_time = "21 seconds";
 
 # Exploiting monotonicity
-value_function_monotone = function(;v_0 = v0, z = grid_z, p_z = prob_z, k = grid_k, tol = 10e-4, 
+value_function_monotone = function(;v_0 = v0, z = grid_z, p_z = prob_z, k = grid_k, tol = 1e-4, 
     beta = 0.987, mu = 2, alpha = 1 / 3, delta = 0.012, rho = 0.95, sigma = 0.007, inert = 0)
     
     k_len = length(grid_k)
@@ -93,46 +92,94 @@ value_function_monotone = function(;v_0 = v0, z = grid_z, p_z = prob_z, k = grid
 
     error = 1
 
-    # Primeira iteração nao tem monotonicidade para checar
-    for state in 1:z_len
+    for state in 1:z_len            
         for capital in 1:k_len
             k_possible = k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k.> 0]    # the values of asset for which the consumption is positive
-            v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0, :]    #the value function at each of the assets above        
+            v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0, :]    #the value function at each of the assets above              
             val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) .+ beta*v_possible*p_z[state, :]
             v_next[capital, state] = maximum(val)
             k_line[capital, state] = k_possible[argmax(val)]
             c[capital, state] = z[state]*(k[capital]^alpha) - k_line[capital, state] + (1 - delta)* k[capital]
-            value = copy((1 - inert)*v_next + inert*value)
-        end
-    end
-    
-    count = 1
+        end # for k
+    end # for z
+
+    value = copy((1 - inert)*v_next + inert*value)
+
     while error > tol
-        value = copy((1 - inert)*v_next + inert*value)
 
         Threads.@threads for state in 1:z_len    
             for capital in 1:k_len
                 k_possible = k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0 .&& k .>= k_line[capital, state]]    # the values of asset for which the consumption is positive
-                v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0 .&& k .>= k_line[capital, state], :]           
+                v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0 .&& k .>= k_line[capital, state], :]               
                 val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) .+ beta*v_possible*p_z[state, :]
                 v_next[capital, state] = maximum(val)
                 k_line[capital, state] = k_possible[argmax(val)]
                 c[capital, state] = z[state]*(k[capital]^alpha) - k_line[capital, state] + (1 - delta)* k[capital]
             end # for k
-        end # for z        
+        end # for z
+        
         error = maximum(abs.(value - v_next))
+        value = copy((1 - inert)*v_next + inert*value)
+
+    end # while
+
+    return value, k_line, c
+end # function
+
+monotone = @time value_function_monotone();
+monotone_time = "6.3 seconds";
+
+
+# Concavity
+lastpos = function(val, k_possible) # Função que vai retornar o ponto maximo da função e o seu respectivo k'
+    v = 0
+    k = 0
+    for i in 2:length(val)
+        if val[i] < val[i-1]
+            v = val[i-1]
+            k = k_possible[i-1]
+            break
+        else
+            v = val[i]
+            k = k_possible[i]
+        end
+    end
+    return v, k
+end;
+
+value_function_concave = function(;v_0 = v0, z = grid_z, p_z = prob_z, k = grid_k, tol = 1e-4,
+    beta = 0.987, mu = 2, alpha = 1 / 3, delta = 0.012, rho = 0.95, sigma = 0.007, inert = 0)
+    k_len = length(grid_k)
+    z_len = length(grid_z)
+
+    # Value function, policy function on c, policy function on k and variable for iteration
+    c, k_line, v_next = zeros(k_len, z_len), zeros(k_len, z_len), zeros(k_len, z_len)
+    value = v_0
+    count = 0
+    error = 1
+    while error > tol
+
+        Threads.@threads for state in 1:z_len
+            for capital in 1:k_len  
+                k_possible = k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0]    
+                v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0, :]               
+                val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) .+ beta*v_possible*p_z[state, :]
+                v_next[capital, state], k_line[capital, state] = lastpos(val, k_possible)
+                c[capital, state] = z[state]*(k[capital]^alpha) - k_line[capital, state] + (1 - delta)* k[capital]
+            end # for k
+        end # for z
+        error = maximum(abs.(value - v_next))
+        value = copy((1 - inert)*v_next + inert*value)
         count = count + 1
     end # while
 
     return value, k_line, c
 end; # function
-
-monotone = @time value_function_monotone();
-monotone_time = "6.5 seconds";
+concave = @time value_function_concave()
 
 
-# Exploiting concavity
-value_function_concavity = function(;v_0 = v0, z = grid_z, p_z = prob_z, k = grid_k, tol = 10e-4, 
+# Concavity + monotonicity
+value_function = function(;v_0 = v0, z = grid_z, p_z = prob_z, k = grid_k, tol = 1e-4, 
     beta = 0.987, mu = 2, alpha = 1 / 3, delta = 0.012, rho = 0.95, sigma = 0.007, inert = 0)
     
     k_len = length(grid_k)
@@ -141,57 +188,48 @@ value_function_concavity = function(;v_0 = v0, z = grid_z, p_z = prob_z, k = gri
 
     # Value function, policy function on c, policy function on k and variable for iteration
     c, k_line, v_next = zeros(k_len, z_len), zeros(k_len, z_len), zeros(k_len, z_len)
+
     error = 1
 
-    # Primeira iteração nao tem monotonicidade para checar
-    for state in 1:z_len
+    for state in 1:z_len            
         for capital in 1:k_len
             k_possible = k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k.> 0]    # the values of asset for which the consumption is positive
-            v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0, :]    #the value function at each of the assets above       
+            v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0, :]    #the value function at each of the assets above              
             val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) .+ beta*v_possible*p_z[state, :]
-            v_next[capital, state] = maximum(val)
-            k_line[capital, state] = k_possible[argmax(val)]
+            v_next[capital, state], k_line[capital, state] = lastpos(val, k_possible)
             c[capital, state] = z[state]*(k[capital]^alpha) - k_line[capital, state] + (1 - delta)* k[capital]
-            value = copy((1 - inert)*v_next + inert*value)
-        end
-    end
-    
-    count = 1
+        end # for k
+    end # for z
+
+    value = copy((1 - inert)*v_next + inert*value)
+
     while error > tol
-        value = copy((1 - inert)*v_next + inert*value)
 
         Threads.@threads for state in 1:z_len    
             for capital in 1:k_len
                 k_possible = k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0 .&& k .>= k_line[capital, state]]    # the values of asset for which the consumption is positive
-                v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0 .&& k .>= k_line[capital, state], :]           
+                v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0 .&& k .>= k_line[capital, state], :]               
                 val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) .+ beta*v_possible*p_z[state, :]
-                for i in 2:length(k_possible)
-                    if val[i] < val[i-1]
-                        k_line[capital, state] = k_possible[i-1]
-                        v_next[capital, state] = val[i-1]
-                        break
-                    else
-                        v_next[capital, state] = val[length(k_possible)]
-                        k_line[capital, state] = k_possible[[length(k_possible)]]
-                    end
-                end
+                v_next[capital, state], k_line[capital, state] = lastpos(val, k_possible)
                 c[capital, state] = z[state]*(k[capital]^alpha) - k_line[capital, state] + (1 - delta)* k[capital]
             end # for k
-        end # for z        
+        end # for z
+        
         error = maximum(abs.(value - v_next))
-        count = count + 1
-        print(error)
+        value = copy((1 - inert)*v_next + inert*value)
+
     end # while
 
     return value, k_line, c
 end # function
 
-@time value_function_concavity()
-@time value_function_monotone();
+
+vf = @time value_function()
+monotone = @time value_function_monotone()
 
 # Accelerator
-value_function_accelerator = function(; z = grid_z, p_z = prob_z, k = grid_k, tol = 10e-2,
-    beta = 0.987, mu =2, alpha = 1 / 3, delta = 0.012, rho = 0.95, sigma = 0.007, inert = 0)
+value_function_accelerator = function(; z = grid_z, p_z = prob_z, k = grid_k, tol = 1e-4,
+    beta = 0.987, mu =2, alpha = 1 / 3, delta = 0.012, rho = 0.95, sigma = 0.007, inert = 0.5)
     
     k_len = length(grid_k)
     z_len = length(grid_z)
@@ -200,37 +238,48 @@ value_function_accelerator = function(; z = grid_z, p_z = prob_z, k = grid_k, to
 
     error = 1
     count = 0
+    
+    Threads.@threads for state in 1:z_len    
+        for capital in 1:k_len
+            k_possible = k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k.> 0]    # the values of asset for which the consumption is positive
+            v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0, :]    #the value function at each of the assets above              
+            val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) .+ beta*v_possible*p_z[state, :]
+            v_next[capital, state] = maximum(val)
+            k_line[capital, state] = k_possible[argmax(val)]
+            c[capital, state] = z[state]*(k[capital]^alpha) - k_line[capital, state] + (1 - delta)* k[capital]
+        end # for k
+    end # for z
+
+    value = copy((1 - inert)*v_next + inert*value)
 
     while error > tol
-        value = copy((1 - inert)*v_next + inert*value)
 
-            for state in 1:z_len    
-                for capital in 1:k_len
-                    if  count%10 == 0 || count < 100
-                        k_possible = k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0]    
-                        v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0, :]    
-                        val = utility.(z[state]*(k[capital]^alpha) + (1 - delta)*k[capital]) .- k_possible .+ beta*v_possible*p_z[state, :]
-                        v_next[capital, state] = maximum(val)
-                        k_line[capital, state] = k_possible[argmax(val)]
-                        c[capital, state] = z[state]*(k[capital]^alpha) - k_line[capital, state] + (1 - delta)* k[capital]
-                    else                     
-                        v_next[capital, state] = utility(c[capital, state]) + beta*value[capital,:]'*p_z[state, :]
-                    end
-
-                end # for k
-            end # for z
+        Threads.@threads for state in 1:z_len    
+            for capital in 1:k_len
+                if count <= 10 || count%10 == 0
+                    k_possible = k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0 .&& k .>= k_line[capital, state]]    # the values of asset for which the consumption is positive
+                    v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0 .&& k .>= k_line[capital, state], :]               
+                    val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) .+ beta*v_possible*p_z[state, :]
+                    v_next[capital, state] = maximum(val)
+                    k_line[capital, state] = k_possible[argmax(val)]
+                    c[capital, state] = z[state]*(k[capital]^alpha) - k_line[capital, state] + (1 - delta)* k[capital]
+                else
+                    v_next[capital, state] = utility(c[capital,state]) + beta*value[findall(k_line[capital,state] .== k)[1],:]'*p_z[state, :]
+                end
+            end # for k
+        end # for z
  
-        count = count + 1
+    
         error = maximum(abs.(value - v_next))
-        print(error, " ")
-
-
-    end # while
+        value = copy((1 - inert)*v_next + inert*value)
+        count = count + 1
+    end
 
     return value, k_line, c
 
 end # function
 
+accelerator = @time value_function_accelerator();
 
 # Multi grid
 value_function_mg = function(g1, g2, g3; z = grid_z, p_z = prob_z, tol = 10e-4,
@@ -274,11 +323,3 @@ value_function_mg = function(g1, g2, g3; z = grid_z, p_z = prob_z, tol = 10e-4,
 end # function
 
 
-
-
-teste = [1 2 3 4]
-test = lag(teste')
-
-teste = [1 2 3 4 5 6 7 6 5 4 3 2 1]
-
-test = lag(teste')
