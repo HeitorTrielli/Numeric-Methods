@@ -229,7 +229,7 @@ monotone = @time value_function_monotone()
 
 # Accelerator
 value_function_accelerator = function(; z = grid_z, p_z = prob_z, k = grid_k, tol = 1e-4,
-    beta = 0.987, mu =2, alpha = 1 / 3, delta = 0.012, rho = 0.95, sigma = 0.007, inert = 0.5)
+    beta = 0.987, mu =2, alpha = 1 / 3, delta = 0.012, rho = 0.95, sigma = 0.007, inert = 0)
     
     k_len = length(grid_k)
     z_len = length(grid_z)
