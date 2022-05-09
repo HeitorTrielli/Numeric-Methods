@@ -32,11 +32,7 @@ beta, mu, alpha, delta, rho, sigma = 0.987, 2, 1/3, 0.012, 0.95, 0.007;
 # Definindo o capital de steady state
 kss = (alpha / (1 / beta - 1 + delta))^(1 / (1 - alpha));
 
-# Definindo os grids
-grid_z = exp.(tauchen(7)[2]); # Valores que exp(z_t) pode tomar 
-prob_z = tauchen(7)[1]; # Matriz de transição de z
-grid_k = LinRange(0.75*kss, 1.25*kss, 500); # Grid de capital
-v0 = zeros(length(grid_k), length(grid_z));
+v0 = zeros(500, 7);
 
 # A função de utilidade
 utility = function(c; mu = 2)
@@ -44,16 +40,18 @@ utility = function(c; mu = 2)
 end;
 
 # Brute Force
-value_function_brute = function(;v_0 = v0, z = grid_z, p_z = prob_z, k = grid_k, tol = 1e-4,
+value_function_brute = function(;v_0 = v0, k_len = 500, z_len = 7, tol = 1e-4,
     beta = 0.987, mu = 2, alpha = 1 / 3, delta = 0.012, rho = 0.95, sigma = 0.007, inert = 0)
+
+    z = exp.(tauchen(z_len)[2]); # Valores que exp(z_t) pode tomar 
+    p_z = tauchen(z_len)[1]; # Matriz de transição de z
+    k = LinRange(0.75*kss, 1.25*kss, k_len); # Grid de capital
     
-    k_len = length(grid_k)
-    z_len = length(grid_z)
+
 
     # Value function, policy function on c, policy function on k and variable for iteration
     c, k_line, v_next = zeros(k_len, z_len), zeros(k_len, z_len), zeros(k_len, z_len)
     value = v_0
-    count = 0
     error = 1
     while error > tol
 
@@ -70,25 +68,25 @@ value_function_brute = function(;v_0 = v0, z = grid_z, p_z = prob_z, k = grid_k,
         error = maximum(abs.(value - v_next))
         value = copy((1 - inert)*v_next + inert*value)
 
-        count = count + 1
     end # while
 
     return value, k_line, c
 end; # function
 
-brute_force = @time value_function_brute()
+brute_force = @time value_function_brute();
 brute_force_time = "21 seconds";
 
 # Exploiting monotonicity
-value_function_monotone = function(;v_0 = v0, z = grid_z, p_z = prob_z, k = grid_k, tol = 1e-4, 
+value_function_monotone = function(;v_0 = v0, k_len = 500, z_len = 7, tol = 1e-4,
     beta = 0.987, mu = 2, alpha = 1 / 3, delta = 0.012, rho = 0.95, sigma = 0.007, inert = 0)
-    
-    k_len = length(grid_k)
-    z_len = length(grid_z)
-    value = v_0
+
+    z = exp.(tauchen(z_len)[2]); # Valores que exp(z_t) pode tomar 
+    p_z = tauchen(z_len)[1]; # Matriz de transição de z
+    k = LinRange(0.75*kss, 1.25*kss, k_len); # Grid de capital
 
     # Value function, policy function on c, policy function on k and variable for iteration
     c, k_line, v_next = zeros(k_len, z_len), zeros(k_len, z_len), zeros(k_len, z_len)
+    value = v_0
 
     error = 1
 
@@ -147,10 +145,12 @@ lastpos = function(val, k_possible) # Função que vai retornar o ponto maximo d
     return v, k
 end;
 
-value_function_concave = function(;v_0 = v0, z = grid_z, p_z = prob_z, k = grid_k, tol = 1e-4,
+value_function_concave = function(;v_0 = v0, k_len = 500, z_len = 7, tol = 1e-4,
     beta = 0.987, mu = 2, alpha = 1 / 3, delta = 0.012, rho = 0.95, sigma = 0.007, inert = 0)
-    k_len = length(grid_k)
-    z_len = length(grid_z)
+
+    z = exp.(tauchen(z_len)[2]); # Valores que exp(z_t) pode tomar 
+    p_z = tauchen(z_len)[1]; # Matriz de transição de z
+    k = LinRange(0.75*kss, 1.25*kss, k_len); # Grid de capital
 
     # Value function, policy function on c, policy function on k and variable for iteration
     c, k_line, v_next = zeros(k_len, z_len), zeros(k_len, z_len), zeros(k_len, z_len)
@@ -175,15 +175,17 @@ value_function_concave = function(;v_0 = v0, z = grid_z, p_z = prob_z, k = grid_
 
     return value, k_line, c
 end; # function
-concave = @time value_function_concave()
+concave = @time value_function_concave();
 
 
 # Concavity + monotonicity
-value_function = function(;v_0 = v0, z = grid_z, p_z = prob_z, k = grid_k, tol = 1e-4, 
+value_function = function(;v_0 = v0, k_len = 500, z_len = 7, tol = 1e-4,
     beta = 0.987, mu = 2, alpha = 1 / 3, delta = 0.012, rho = 0.95, sigma = 0.007, inert = 0)
-    
-    k_len = length(grid_k)
-    z_len = length(grid_z)
+
+    z = exp.(tauchen(z_len)[2]); # Valores que exp(z_t) pode tomar 
+    p_z = tauchen(z_len)[1]; # Matriz de transição de z
+    k = LinRange(0.75*kss, 1.25*kss, k_len); # Grid de capital
+
     value = v_0
 
     # Value function, policy function on c, policy function on k and variable for iteration
@@ -217,24 +219,27 @@ value_function = function(;v_0 = v0, z = grid_z, p_z = prob_z, k = grid_k, tol =
         
         error = maximum(abs.(value - v_next))
         value = copy((1 - inert)*v_next + inert*value)
-
+        print(error, " ")
     end # while
 
     return value, k_line, c
 end # function
 
 
-vf = @time value_function()
-monotone = @time value_function_monotone()
+vf = @time value_function();
 
 # Accelerator
-value_function_accelerator = function(; z = grid_z, p_z = prob_z, k = grid_k, tol = 1e-4,
-    beta = 0.987, mu =2, alpha = 1 / 3, delta = 0.012, rho = 0.95, sigma = 0.007, inert = 0)
-    
-    k_len = length(grid_k)
-    z_len = length(grid_z)
+value_function_accelerator = function(;v_0 = v0, k_len = 500, z_len = 7, tol = 1e-4,
+    beta = 0.987, mu = 2, alpha = 1 / 3, delta = 0.012, rho = 0.95, sigma = 0.007, inert = 0)
 
-    value, c, k_line, v_next = zeros(k_len, z_len), zeros(k_len, z_len), zeros(k_len, z_len), zeros(k_len, z_len) 
+    z = exp.(tauchen(z_len)[2]); # Valores que exp(z_t) pode tomar 
+    p_z = tauchen(z_len)[1]; # Matriz de transição de z
+    k = LinRange(0.75*kss, 1.25*kss, k_len); # Grid de capital
+
+    # Value function, policy function on c, policy function on k and variable for iteration
+    c, k_line, v_next = zeros(k_len, z_len), zeros(k_len, z_len), zeros(k_len, z_len)
+    value = v_0
+
 
     error = 1
     count = 0
@@ -279,47 +284,90 @@ value_function_accelerator = function(; z = grid_z, p_z = prob_z, k = grid_k, to
 
 end # function
 
-accelerator = @time value_function_accelerator();
+accelerator = @time value_function_accelerator()
 
-# Multi grid
-value_function_mg = function(g1, g2, g3; z = grid_z, p_z = prob_z, tol = 10e-4,
-    beta = 0.987, mu =2, alpha = 1 / 3, delta = 0.012, rho = 0.95, sigma = 0.007)
-    
-    grid_k1 = LinRange(0.75*kss, 1.25*kss, g1)
-    grid_k2 = LinRange(0.75*kss, 1.25*kss, g2)
-    grid_k3 = LinRange(0.75*kss, 1.25*kss, g3)
-    k1_len = length(grid_k1)
-    k2_len = length(grid_k2)
-    k3_len = length(grid_k3)
-    z_len = length(grid_z)
 
-    value, c, k_line, v_next = zeros(k_len, z_len), zeros(k_len, z_len), zeros(k_len, z_len), zeros(k_len, z_len) 
+## Accelerator sem usar monotonicidade
+value_function_accelerator_brute = function(;v_0 = v0, k_len = 500, z_len = 7, tol = 1e-4,
+    beta = 0.987, mu = 2, alpha = 1 / 3, delta = 0.012, rho = 0.95, sigma = 0.007, inert = 0)
+
+    z = exp.(tauchen(z_len)[2]); # Valores que exp(z_t) pode tomar 
+    p_z = tauchen(z_len)[1]; # Matriz de transição de z
+    k = LinRange(0.75*kss, 1.25*kss, k_len); # Grid de capital
+
+    # Value function, policy function on c, policy function on k and variable for iteration
+    c, k_line, v_next = zeros(k_len, z_len), zeros(k_len, z_len), zeros(k_len, z_len)
+    value = v_0
+
 
     error = 1
     count = 0
-    while error > tol
-        value = copy(v_next)
 
-        for state in 1:z_len    
+    value = copy((1 - inert)*v_next + inert*value)
+
+    while error > tol
+
+        Threads.@threads for state in 1:z_len    
             for capital in 1:k_len
-                if count % 10 == 0 || count < 20
-                    k_possible = k[z[state]*(k[capital]^alpha) .- k .+ (1 - delta)*k[capital] .> 0]    # the values of asset for which the consumption is positive
-                    v_possible = value[z[state]*(k[capital]^alpha) .- k .+ (1 - delta)*k[capital] .> 0, :]   #the value function at each of the assets above              
+                if count <= 30 || count%2 == 0
+                    k_possible = k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0]    # the values of asset for which the consumption is positive
+                    v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0, :]               
                     val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) .+ beta*v_possible*p_z[state, :]
                     v_next[capital, state] = maximum(val)
                     k_line[capital, state] = k_possible[argmax(val)]
                     c[capital, state] = z[state]*(k[capital]^alpha) - k_line[capital, state] + (1 - delta)* k[capital]
                 else
-                    v_next = utility.(c) + beta*p_z*value
-                end # if
+                    v_next[capital, state] = utility(c[capital,state]) + beta*value[findall(k_line[capital,state] .== k)[1],:]'*p_z[state, :]
+                end
             end # for k
         end # for z
-        
+ 
+    
         error = maximum(abs.(value - v_next))
+        value = copy((1 - inert)*v_next + inert*value)
         count = count + 1
-    end # while
+        print(error, " ")
+    end
+
+    return value, k_line, c
+
+end # function
+
+accel_brute = @time value_function_accelerator_brute()
+
+plot(accel_brute[3])
+
+# Multi grid
+# Função que faz a interpolação da função valor
+lin_interpol = function(minsize, maxsize, value; z_len = 7)    
+    
+    step = Int(maxsize/minsize)
+    v_1 = zeros(maxsize, z_len)
+    Threads.@threads for i in 1:(maxsize - step)
+        v_1[i, :] = value[Int(ceil(i/step)),:] + (i-1)%step*(value[Int(ceil((i+step)/step)),:] - value[Int(ceil(i/step)),:])/step
+    end
+    Threads.@threads for i in (maxsize - step + 1):maxsize
+        v_1[i, :] = value[minsize, :] - (maxsize-i)%step*(value[Int(ceil((maxsize)/step)),:] - value[Int(ceil((maxsize-step)/step)),:])/step
+
+    end
+    return v_1
+end
+
+value_function_mg = function(g1, g2, g3; v_0 = v0, z_len = 7, tol = 1e-4,
+    beta = 0.987, mu = 2, alpha = 1 / 3, delta = 0.012, rho = 0.95, sigma = 0.007, inert = 0)
+
+    value1 = value_function_brute(v_0 = zeros(g1, z_len), k_len = g1)[1]
+
+    v1 = interpol(g1, g2, value1)
+
+    value2 = value_function_brute(v_0 = v1, k_len = g2)[1]
+
+    v2 = interpol(g2, g3, value2)
+
+    value, k_line, c = value_function_brute(v_0 = v2, k_len = g3)
 
     return value, k_line, c
 end # function
 
+multigrid = @time value_function_mg(100, 500, 1000)
 
