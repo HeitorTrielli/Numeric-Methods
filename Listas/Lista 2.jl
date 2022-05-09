@@ -102,7 +102,7 @@ value_function_monotone = function(;v_0 = v0, k_len = 500, z_len = 7, tol = 1e-4
     end # for z
 
     value = copy((1 - inert)*v_next + inert*value)
-
+    count = 0
     while error > tol
 
         Threads.@threads for state in 1:z_len    
@@ -118,15 +118,15 @@ value_function_monotone = function(;v_0 = v0, k_len = 500, z_len = 7, tol = 1e-4
         
         error = maximum(abs.(value - v_next))
         value = copy((1 - inert)*v_next + inert*value)
-
+        count = count + 1
     end # while
 
-    return value, k_line, c
+    return value, k_line, c, count
 end # function
 
 monotone = @time value_function_monotone();
 monotone_time = "6.3 seconds";
-
+monotone[4]
 
 # Concavity
 lastpos = function(val, k_possible) # Função que vai retornar o ponto maximo da função e o seu respectivo k'
@@ -230,7 +230,8 @@ vf = @time value_function();
 
 # Accelerator
 value_function_accelerator = function(;v_0 = v0, k_len = 500, z_len = 7, tol = 1e-4,
-    beta = 0.987, mu = 2, alpha = 1 / 3, delta = 0.012, rho = 0.95, sigma = 0.007, inert = 0)
+    beta = 0.987, mu = 2, alpha = 1 / 3, delta = 0.012, rho = 0.95, sigma = 0.007, inert = 0,
+    reset = 10)
 
     z = exp.(tauchen(z_len)[2]); # Valores que exp(z_t) pode tomar 
     p_z = tauchen(z_len)[1]; # Matriz de transição de z
@@ -261,7 +262,7 @@ value_function_accelerator = function(;v_0 = v0, k_len = 500, z_len = 7, tol = 1
 
         Threads.@threads for state in 1:z_len    
             for capital in 1:k_len
-                if count <= 10 || count%10 == 0
+                if count <= 80 || count%reset == 0
                     k_possible = k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0 .&& k .>= k_line[capital, state]]    # the values of asset for which the consumption is positive
                     v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0 .&& k .>= k_line[capital, state], :]               
                     val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) .+ beta*v_possible*p_z[state, :]
@@ -280,12 +281,11 @@ value_function_accelerator = function(;v_0 = v0, k_len = 500, z_len = 7, tol = 1
         count = count + 1
     end
 
-    return value, k_line, c
+    return value, k_line, c, count
 
 end # function
 
-accelerator = @time value_function_accelerator()
-
+accelerator = @time value_function_accelerator();
 
 ## Accelerator sem usar monotonicidade
 value_function_accelerator_brute = function(;v_0 = v0, k_len = 500, z_len = 7, tol = 1e-4,
@@ -309,7 +309,7 @@ value_function_accelerator_brute = function(;v_0 = v0, k_len = 500, z_len = 7, t
 
         Threads.@threads for state in 1:z_len    
             for capital in 1:k_len
-                if count <= 30 || count%2 == 0
+                if count <= 30 || count%10 == 0
                     k_possible = k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0]    # the values of asset for which the consumption is positive
                     v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0, :]               
                     val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) .+ beta*v_possible*p_z[state, :]
@@ -326,16 +326,15 @@ value_function_accelerator_brute = function(;v_0 = v0, k_len = 500, z_len = 7, t
         error = maximum(abs.(value - v_next))
         value = copy((1 - inert)*v_next + inert*value)
         count = count + 1
-        print(error, " ")
+
     end
 
     return value, k_line, c
 
 end # function
 
-accel_brute = @time value_function_accelerator_brute()
+v0 = accel_brute = @time value_function_accelerator_brute(v_0 = zeros(100,7), k_len = 100)[1]
 
-plot(accel_brute[3])
 
 # Multi grid
 # Função que faz a interpolação da função valor
@@ -347,8 +346,7 @@ lin_interpol = function(minsize, maxsize, value; z_len = 7)
         v_1[i, :] = value[Int(ceil(i/step)),:] + (i-1)%step*(value[Int(ceil((i+step)/step)),:] - value[Int(ceil(i/step)),:])/step
     end
     Threads.@threads for i in (maxsize - step + 1):maxsize
-        v_1[i, :] = value[minsize, :] - (maxsize-i)%step*(value[Int(ceil((maxsize)/step)),:] - value[Int(ceil((maxsize-step)/step)),:])/step
-
+        v_1[i, :] = value[minsize, :] - (maxsize-i)%step*(value[Int(ceil((maxsize)/step)),:] - v_1[Int(ceil((maxsize-step))),:])/step
     end
     return v_1
 end
@@ -356,18 +354,19 @@ end
 value_function_mg = function(g1, g2, g3; v_0 = v0, z_len = 7, tol = 1e-4,
     beta = 0.987, mu = 2, alpha = 1 / 3, delta = 0.012, rho = 0.95, sigma = 0.007, inert = 0)
 
-    value1 = value_function_brute(v_0 = zeros(g1, z_len), k_len = g1)[1]
+    value1 = value_function_brute(v_0 = zeros(g1, z_len), k_len = g1, tol = tol)[1]
 
-    v1 = interpol(g1, g2, value1)
+    v1 = lin_interpol(g1, g2, value1)
 
-    value2 = value_function_brute(v_0 = v1, k_len = g2)[1]
+    value2 = value_function_brute(v_0 = v1, k_len = g2, tol = tol)[1]
 
-    v2 = interpol(g2, g3, value2)
+    v2 = lin_interpol(g2, g3, value2)
 
-    value, k_line, c = value_function_brute(v_0 = v2, k_len = g3)
+    value, k_line, c = value_function_brute(v_0 = v2, k_len = g3, tol = tol)
 
     return value, k_line, c
 end # function
 
-multigrid = @time value_function_mg(100, 500, 1000)
+multigrid = @time value_function_mg(100, 500, 5000)
+
 
