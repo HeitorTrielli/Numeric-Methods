@@ -1,4 +1,5 @@
-using Plots, BenchmarkTools, Distributions, Profile, Distributed # Pacotes que estou usando
+using Plots, BenchmarkTools, Distributions, Distributed, ProfileView # Pacotes que estou usando
+
 
 Threads.nthreads()
 
@@ -23,12 +24,11 @@ tauchen = function (grid_len::Int64; mu::Float64 = 0.0, sigma::Float64 = 0.007, 
     
     probs = [vec_1 mat_interna vec_n] # gerando a matriz de transição
 
-    return probs, grid
+    return probs::Array{Float64,2}, Array(grid)::Array{Float64,1}
         
 end;
 # Definindo as variáveis
 beta, mu, alpha, delta, rho, sigma = 0.987, 2.0, 1/3, 0.012, 0.95, 0.007;
-
 
 # Definindo o capital de steady state
 k_ss = (alpha / (1 / beta - 1 + delta))^(1 / (1 - alpha));
@@ -43,7 +43,6 @@ end;
 #########################################
 ############### Questão 3 ###############
 #########################################
-
 
 ############## Brute Force ##############
 value_function_brute = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500, z_len::Int64 = 7, tol::Float64 = 1e-4,
@@ -62,11 +61,11 @@ value_function_brute = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500, z
     error = 1
     while error > tol
 
-        @sync @distributed for state in 1:z_len
+        Threads.@threads for state in 1:z_len
             for capital in 1:k_len  
                 k_possible = k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0]    
                 v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0, :]               
-                val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) .+ beta*v_possible*p_z[state, :]
+                val = utility.(z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k_possible) + beta*v_possible*p_z[state, :]
                 v_next[capital, state] = maximum(val)
                 k_line[capital, state] = k_possible[argmax(val)]
             end # for k
@@ -82,7 +81,7 @@ value_function_brute = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500, z
     c = zmat.*(kmat.^alpha) - k_line + (1-delta)*kmat
 
 
-    return value, k_line, c
+    return value::Array{Float64}, k_line::Array{Float64}, c::Array{Float64}
 end; # function
 
 brute_force = @time value_function_brute();
@@ -183,6 +182,7 @@ value_function_concave = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500,
         error = maximum(abs.(value - v_next))
         value = copy((1 - inert)*v_next + inert*value)
         count += 1
+        println(error)
     end # while
     zmat = repeat(z,1,k_len)'
     kmat = repeat(k,1,z_len)
@@ -386,15 +386,15 @@ value_function_mg = function(g1::Int64, g2::Int64, g3::Int64; v_0::Array{Float64
     beta::Float64 = 0.987, mu::Float64 = 2.0, alpha::Float64 = 1 / 3, delta::Float64 = 0.012, rho::Float64 = 0.95, sigma::Float64 = 0.007, inert::Float64 = 0.0,
     kss::Float64 = k_ss)
 
-    value1 = @time value_function_accelerator_brute(v_0 = zeros(g1, z_len), k_len = g1, tol = tol)[1]
+    value1 = @time value_function_brute(v_0 = zeros(g1, z_len), k_len = g1, tol = tol)[1]
 
     v1 = lin_interpol(g1, g2, value1)
 
-    value2 = @time value_function_accelerator_brute(v_0 = v1, k_len = g2, tol = tol)[1]
+    value2 = @time value_function_brute(v_0 = v1, k_len = g2, tol = tol)[1]
 
     v2 = lin_interpol(g2, g3, value2)
 
-    value, k_line, c = @time value_function_monotone(v_0 = v2, k_len = g3, tol = tol)
+    value, k_line, c = @time value_function_brute(v_0 = v2, k_len = g3, tol = tol)
 
     return value, k_line, c
 end # function
