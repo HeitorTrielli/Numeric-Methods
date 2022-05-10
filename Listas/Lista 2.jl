@@ -1,4 +1,4 @@
-using Plots, BenchmarkTools, Distributions, Profile # Pacotes que estou usando
+using Plots, BenchmarkTools, Distributions, Profile, Distributed # Pacotes que estou usando
 
 Threads.nthreads()
 
@@ -62,10 +62,10 @@ value_function_brute = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500, z
     error = 1
     while error > tol
 
-        Threads.@threads for state in 1:z_len
+        @sync @distributed for state in 1:z_len
             for capital in 1:k_len  
-                k_possible = @. k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] - k > 0]    
-                v_possible = @. value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] - k > 0, :]               
+                k_possible = k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0]    
+                v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0, :]               
                 val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) .+ beta*v_possible*p_z[state, :]
                 v_next[capital, state] = maximum(val)
                 k_line[capital, state] = k_possible[argmax(val)]
@@ -75,6 +75,7 @@ value_function_brute = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500, z
         value = copy((1 - inert)*v_next + inert*value)
 
     end # while
+    
     zmat = repeat(z,1,k_len)'
     kmat = repeat(k,1,z_len)
     
@@ -85,8 +86,6 @@ value_function_brute = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500, z
 end; # function
 
 brute_force = @time value_function_brute();
-brute_force_time = "21 seconds";
-
 
 ####### Exploiting monotonicity #########
 value_function_monotone = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500, z_len::Int64 = 7, tol::Float64 = 1e-4,
@@ -140,8 +139,6 @@ value_function_monotone = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500
 end # function
 
 monotone = @time value_function_monotone();
-monotone_time = "6.3 seconds";
-
 
 ############### Concavity ###############
 lastpos = function(val::Array{Float64}, k_possible::Array{Float64}) # Função que vai retornar o ponto maximo da função e o seu respectivo k'
@@ -404,8 +401,9 @@ end # function
 
 multigrid = @time value_function_mg(100, 500, 5000)
 
-plot(multigrid[3])
 
 #########################################
 ############### Questão 6 ###############
 #########################################
+
+
