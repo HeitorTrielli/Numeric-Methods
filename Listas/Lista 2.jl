@@ -2,7 +2,7 @@ using Plots, BenchmarkTools, Distributions, Profile # Pacotes que estou usando
 
 Threads.nthreads()
 
-tauchen = function (grid_len; mu = 0, sigma = 0.007, rho = 0.95, m = 3)
+tauchen = function (grid_len::Int64; mu::Float64 = 0.0, sigma::Float64 = 0.007, rho::Float64 = 0.95, m::Float64 = 3.0)
 
     theta_max = m * sigma / (sqrt(1 - rho^2)) + mu # definindo o maior valor do grid
     theta_min = - theta_max + 2 * mu # definindo o menor valor do grid
@@ -27,21 +27,28 @@ tauchen = function (grid_len; mu = 0, sigma = 0.007, rho = 0.95, m = 3)
         
 end;
 # Definindo as variáveis
-beta, mu, alpha, delta, rho, sigma = 0.987, 2, 1/3, 0.012, 0.95, 0.007;
+beta, mu, alpha, delta, rho, sigma = 0.987, 2.0, 1/3, 0.012, 0.95, 0.007;
+
 
 # Definindo o capital de steady state
-kss = (alpha / (1 / beta - 1 + delta))^(1 / (1 - alpha));
+k_ss = (alpha / (1 / beta - 1 + delta))^(1 / (1 - alpha));
 
 v0 = zeros(500, 7);
 
-# A função de utilidade
-utility = function(c; mu = 2)
-   return (float(c)^(1 - mu) - 1)/(1 - mu)
+## A função de utilidade ##
+utility = function(c::Float64; mu::Float64 = 2.0)
+   return (c^(1 - mu) - 1)/(1 - mu)
 end;
 
-# Brute Force
-value_function_brute = function(;v_0 = v0, k_len = 500, z_len = 7, tol = 1e-4,
-    beta = 0.987, mu = 2, alpha = 1 / 3, delta = 0.012, rho = 0.95, sigma = 0.007, inert = 0)
+#########################################
+############### Questão 3 ###############
+#########################################
+
+
+############## Brute Force ##############
+value_function_brute = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500, z_len::Int64 = 7, tol::Float64 = 1e-4,
+    beta::Float64 = 0.987, mu::Float64 = 2.0, alpha::Float64 = 1 / 3, delta::Float64 = 0.012, rho::Float64 = 0.95, sigma::Float64 = 0.007, inert::Float64 = 0.0,
+    kss::Float64 = k_ss)
 
     z = exp.(tauchen(z_len)[2]); # Valores que exp(z_t) pode tomar 
     p_z = tauchen(z_len)[1]; # Matriz de transição de z
@@ -50,25 +57,29 @@ value_function_brute = function(;v_0 = v0, k_len = 500, z_len = 7, tol = 1e-4,
 
 
     # Value function, policy function on c, policy function on k and variable for iteration
-    c, k_line, v_next = zeros(k_len, z_len), zeros(k_len, z_len), zeros(k_len, z_len)
+    k_line, v_next = zeros(k_len, z_len), zeros(k_len, z_len)
     value = v_0
     error = 1
     while error > tol
 
         Threads.@threads for state in 1:z_len
             for capital in 1:k_len  
-                k_possible = k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0]    
-                v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0, :]               
+                k_possible = @. k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] - k > 0]    
+                v_possible = @. value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] - k > 0, :]               
                 val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) .+ beta*v_possible*p_z[state, :]
                 v_next[capital, state] = maximum(val)
                 k_line[capital, state] = k_possible[argmax(val)]
-                c[capital, state] = z[state]*(k[capital]^alpha) - k_line[capital, state] + (1 - delta)* k[capital]
             end # for k
         end # for z
         error = maximum(abs.(value - v_next))
         value = copy((1 - inert)*v_next + inert*value)
 
     end # while
+    zmat = repeat(z,1,k_len)'
+    kmat = repeat(k,1,z_len)
+    
+    c = zmat.*(kmat.^alpha) - k_line + (1-delta)*kmat
+
 
     return value, k_line, c
 end; # function
@@ -76,16 +87,18 @@ end; # function
 brute_force = @time value_function_brute();
 brute_force_time = "21 seconds";
 
-# Exploiting monotonicity
-value_function_monotone = function(;v_0 = v0, k_len = 500, z_len = 7, tol = 1e-4,
-    beta = 0.987, mu = 2, alpha = 1 / 3, delta = 0.012, rho = 0.95, sigma = 0.007, inert = 0)
+
+####### Exploiting monotonicity #########
+value_function_monotone = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500, z_len::Int64 = 7, tol::Float64 = 1e-4,
+    beta::Float64 = 0.987, mu::Float64 = 2.0, alpha::Float64 = 1 / 3, delta::Float64 = 0.012, rho::Float64 = 0.95, sigma::Float64 = 0.007, inert::Float64 = 0.0,
+    kss::Float64 = k_ss)
 
     z = exp.(tauchen(z_len)[2]); # Valores que exp(z_t) pode tomar 
     p_z = tauchen(z_len)[1]; # Matriz de transição de z
     k = LinRange(0.75*kss, 1.25*kss, k_len); # Grid de capital
 
     # Value function, policy function on c, policy function on k and variable for iteration
-    c, k_line, v_next = zeros(k_len, z_len), zeros(k_len, z_len), zeros(k_len, z_len)
+    k_line, v_next = zeros(k_len, z_len), zeros(k_len, z_len)
     value = v_0
 
     error = 1
@@ -97,12 +110,11 @@ value_function_monotone = function(;v_0 = v0, k_len = 500, z_len = 7, tol = 1e-4
             val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) .+ beta*v_possible*p_z[state, :]
             v_next[capital, state] = maximum(val)
             k_line[capital, state] = k_possible[argmax(val)]
-            c[capital, state] = z[state]*(k[capital]^alpha) - k_line[capital, state] + (1 - delta)* k[capital]
         end # for k
     end # for z
 
     value = copy((1 - inert)*v_next + inert*value)
-    count = 0
+
     while error > tol
 
         Threads.@threads for state in 1:z_len    
@@ -112,26 +124,29 @@ value_function_monotone = function(;v_0 = v0, k_len = 500, z_len = 7, tol = 1e-4
                 val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) .+ beta*v_possible*p_z[state, :]
                 v_next[capital, state] = maximum(val)
                 k_line[capital, state] = k_possible[argmax(val)]
-                c[capital, state] = z[state]*(k[capital]^alpha) - k_line[capital, state] + (1 - delta)* k[capital]
             end # for k
         end # for z
         
         error = maximum(abs.(value - v_next))
         value = copy((1 - inert)*v_next + inert*value)
-        count = count + 1
     end # while
 
-    return value, k_line, c, count
+    zmat = repeat(z,1,k_len)'
+    kmat = repeat(k,1,z_len)
+    
+    c = zmat.*(kmat.^alpha) - k_line + (1-delta)*kmat
+
+    return value, k_line, c
 end # function
 
 monotone = @time value_function_monotone();
 monotone_time = "6.3 seconds";
-monotone[4]
 
-# Concavity
-lastpos = function(val, k_possible) # Função que vai retornar o ponto maximo da função e o seu respectivo k'
-    v = 0
-    k = 0
+
+############### Concavity ###############
+lastpos = function(val::Array{Float64}, k_possible::Array{Float64}) # Função que vai retornar o ponto maximo da função e o seu respectivo k'
+    v = 0.0
+    k = 0.0
     for i in 2:length(val)
         if val[i] < val[i-1]
             v = val[i-1]
@@ -145,15 +160,16 @@ lastpos = function(val, k_possible) # Função que vai retornar o ponto maximo d
     return v, k
 end;
 
-value_function_concave = function(;v_0 = v0, k_len = 500, z_len = 7, tol = 1e-4,
-    beta = 0.987, mu = 2, alpha = 1 / 3, delta = 0.012, rho = 0.95, sigma = 0.007, inert = 0)
+value_function_concave = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500, z_len::Int64 = 7, tol::Float64 = 1e-4,
+    beta::Float64 = 0.987, mu::Float64 = 2.0, alpha::Float64 = 1 / 3, delta::Float64 = 0.012, rho::Float64 = 0.95, sigma::Float64 = 0.007, inert::Float64 = 0.0,
+    kss::Float64 = k_ss)
 
     z = exp.(tauchen(z_len)[2]); # Valores que exp(z_t) pode tomar 
     p_z = tauchen(z_len)[1]; # Matriz de transição de z
     k = LinRange(0.75*kss, 1.25*kss, k_len); # Grid de capital
 
     # Value function, policy function on c, policy function on k and variable for iteration
-    c, k_line, v_next = zeros(k_len, z_len), zeros(k_len, z_len), zeros(k_len, z_len)
+    k_line, v_next = zeros(k_len, z_len), zeros(k_len, z_len)
     value = v_0
     count = 0
     error = 1
@@ -165,22 +181,27 @@ value_function_concave = function(;v_0 = v0, k_len = 500, z_len = 7, tol = 1e-4,
                 v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0, :]               
                 val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) .+ beta*v_possible*p_z[state, :]
                 v_next[capital, state], k_line[capital, state] = lastpos(val, k_possible)
-                c[capital, state] = z[state]*(k[capital]^alpha) - k_line[capital, state] + (1 - delta)* k[capital]
             end # for k
         end # for z
         error = maximum(abs.(value - v_next))
         value = copy((1 - inert)*v_next + inert*value)
-        count = count + 1
+        count += 1
     end # while
+    zmat = repeat(z,1,k_len)'
+    kmat = repeat(k,1,z_len)
+    
+    c = zmat.*(kmat.^alpha) - k_line + (1-delta)*kmat
 
     return value, k_line, c
 end; # function
+
 concave = @time value_function_concave();
 
 
-# Concavity + monotonicity
-value_function = function(;v_0 = v0, k_len = 500, z_len = 7, tol = 1e-4,
-    beta = 0.987, mu = 2, alpha = 1 / 3, delta = 0.012, rho = 0.95, sigma = 0.007, inert = 0)
+####### Concavity + monotonicity ########
+value_function = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500, z_len::Int64 = 7, tol::Float64 = 1e-4,
+    beta::Float64 = 0.987, mu::Float64 = 2.0, alpha::Float64 = 1 / 3, delta::Float64 = 0.012, rho::Float64 = 0.95, sigma::Float64 = 0.007, inert::Float64 = 0.0,
+    kss::Float64 = k_ss)
 
     z = exp.(tauchen(z_len)[2]); # Valores que exp(z_t) pode tomar 
     p_z = tauchen(z_len)[1]; # Matriz de transição de z
@@ -189,7 +210,7 @@ value_function = function(;v_0 = v0, k_len = 500, z_len = 7, tol = 1e-4,
     value = v_0
 
     # Value function, policy function on c, policy function on k and variable for iteration
-    c, k_line, v_next = zeros(k_len, z_len), zeros(k_len, z_len), zeros(k_len, z_len)
+    k_line, v_next = zeros(k_len, z_len), zeros(k_len, z_len)
 
     error = 1
 
@@ -199,7 +220,6 @@ value_function = function(;v_0 = v0, k_len = 500, z_len = 7, tol = 1e-4,
             v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0, :]    #the value function at each of the assets above              
             val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) .+ beta*v_possible*p_z[state, :]
             v_next[capital, state], k_line[capital, state] = lastpos(val, k_possible)
-            c[capital, state] = z[state]*(k[capital]^alpha) - k_line[capital, state] + (1 - delta)* k[capital]
         end # for k
     end # for z
 
@@ -213,14 +233,17 @@ value_function = function(;v_0 = v0, k_len = 500, z_len = 7, tol = 1e-4,
                 v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0 .&& k .>= k_line[capital, state], :]               
                 val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) .+ beta*v_possible*p_z[state, :]
                 v_next[capital, state], k_line[capital, state] = lastpos(val, k_possible)
-                c[capital, state] = z[state]*(k[capital]^alpha) - k_line[capital, state] + (1 - delta)* k[capital]
             end # for k
         end # for z
         
         error = maximum(abs.(value - v_next))
         value = copy((1 - inert)*v_next + inert*value)
-        print(error, " ")
     end # while
+
+    zmat = repeat(z,1,k_len)'
+    kmat = repeat(k,1,z_len)
+    
+    c = zmat.*(kmat.^alpha) - k_line + (1-delta)*kmat
 
     return value, k_line, c
 end # function
@@ -228,17 +251,22 @@ end # function
 
 vf = @time value_function();
 
-# Accelerator
-value_function_accelerator = function(;v_0 = v0, k_len = 500, z_len = 7, tol = 1e-4,
-    beta = 0.987, mu = 2, alpha = 1 / 3, delta = 0.012, rho = 0.95, sigma = 0.007, inert = 0,
-    reset = 10)
+
+#########################################
+############### Questão 3 ###############
+#########################################
+
+############## Accelerator ##############
+value_function_accelerator = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500, z_len::Int64 = 7, tol::Float64 = 1e-4,
+    beta::Float64 = 0.987, mu::Float64 = 2.0, alpha::Float64 = 1 / 3, delta::Float64 = 0.012, rho::Float64 = 0.95, sigma::Float64 = 0.007, inert::Float64 = 0.0,
+    reset::Int64 = 10, start::Int64 = 30, kss::Float64 = k_ss)
 
     z = exp.(tauchen(z_len)[2]); # Valores que exp(z_t) pode tomar 
     p_z = tauchen(z_len)[1]; # Matriz de transição de z
     k = LinRange(0.75*kss, 1.25*kss, k_len); # Grid de capital
 
     # Value function, policy function on c, policy function on k and variable for iteration
-    c, k_line, v_next = zeros(k_len, z_len), zeros(k_len, z_len), zeros(k_len, z_len)
+    k_line, v_next = zeros(k_len, z_len), zeros(k_len, z_len)
     value = v_0
 
 
@@ -252,7 +280,6 @@ value_function_accelerator = function(;v_0 = v0, k_len = 500, z_len = 7, tol = 1
             val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) .+ beta*v_possible*p_z[state, :]
             v_next[capital, state] = maximum(val)
             k_line[capital, state] = k_possible[argmax(val)]
-            c[capital, state] = z[state]*(k[capital]^alpha) - k_line[capital, state] + (1 - delta)* k[capital]
         end # for k
     end # for z
 
@@ -262,15 +289,14 @@ value_function_accelerator = function(;v_0 = v0, k_len = 500, z_len = 7, tol = 1
 
         Threads.@threads for state in 1:z_len    
             for capital in 1:k_len
-                if count <= 80 || count%reset == 0
+                if count <= start || count%reset == 0
                     k_possible = k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0 .&& k .>= k_line[capital, state]]    # the values of asset for which the consumption is positive
                     v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0 .&& k .>= k_line[capital, state], :]               
                     val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) .+ beta*v_possible*p_z[state, :]
                     v_next[capital, state] = maximum(val)
                     k_line[capital, state] = k_possible[argmax(val)]
-                    c[capital, state] = z[state]*(k[capital]^alpha) - k_line[capital, state] + (1 - delta)* k[capital]
                 else
-                    v_next[capital, state] = utility(c[capital,state]) + beta*value[findall(k_line[capital,state] .== k)[1],:]'*p_z[state, :]
+                    v_next[capital, state] = utility(z[state]*(k[capital]^alpha) - k_line[capital, state] + (1 - delta)* k[capital]) + beta*value[findall(k_line[capital,state] .== k)[1],:]'*p_z[state, :]
                 end
             end # for k
         end # for z
@@ -278,25 +304,29 @@ value_function_accelerator = function(;v_0 = v0, k_len = 500, z_len = 7, tol = 1
     
         error = maximum(abs.(value - v_next))
         value = copy((1 - inert)*v_next + inert*value)
-        count = count + 1
+        count += 1
     end
-
+    zmat = repeat(z,1,k_len)'
+    kmat = repeat(k,1,z_len)
+    c = zmat.*(kmat.^alpha) - k_line + (1-delta)*kmat
     return value, k_line, c, count
 
 end # function
 
 accelerator = @time value_function_accelerator();
 
-## Accelerator sem usar monotonicidade
-value_function_accelerator_brute = function(;v_0 = v0, k_len = 500, z_len = 7, tol = 1e-4,
-    beta = 0.987, mu = 2, alpha = 1 / 3, delta = 0.012, rho = 0.95, sigma = 0.007, inert = 0)
+
+## Accelerator sem usar monotonicidade ##
+value_function_accelerator_brute = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500, z_len::Int64 = 7, tol::Float64 = 1e-4,
+    beta::Float64 = 0.987, mu::Float64 = 2.0, alpha::Float64 = 1 / 3, delta::Float64 = 0.012, rho::Float64 = 0.95, sigma::Float64 = 0.007, inert::Float64 = 0.0,
+    reset::Int64 = 10, start::Int64 = 30, kss::Float64 = k_ss)
 
     z = exp.(tauchen(z_len)[2]); # Valores que exp(z_t) pode tomar 
     p_z = tauchen(z_len)[1]; # Matriz de transição de z
     k = LinRange(0.75*kss, 1.25*kss, k_len); # Grid de capital
 
     # Value function, policy function on c, policy function on k and variable for iteration
-    c, k_line, v_next = zeros(k_len, z_len), zeros(k_len, z_len), zeros(k_len, z_len)
+    k_line, v_next = zeros(k_len, z_len), zeros(k_len, z_len)
     value = v_0
 
 
@@ -309,15 +339,14 @@ value_function_accelerator_brute = function(;v_0 = v0, k_len = 500, z_len = 7, t
 
         Threads.@threads for state in 1:z_len    
             for capital in 1:k_len
-                if count <= 30 || count%10 == 0
+                if count <= start || count%reset == 0
                     k_possible = k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0]    # the values of asset for which the consumption is positive
                     v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0, :]               
                     val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) .+ beta*v_possible*p_z[state, :]
                     v_next[capital, state] = maximum(val)
                     k_line[capital, state] = k_possible[argmax(val)]
-                    c[capital, state] = z[state]*(k[capital]^alpha) - k_line[capital, state] + (1 - delta)* k[capital]
                 else
-                    v_next[capital, state] = utility(c[capital,state]) + beta*value[findall(k_line[capital,state] .== k)[1],:]'*p_z[state, :]
+                    v_next[capital, state] = utility(z[state]*(k[capital]^alpha) - k_line[capital, state] + (1 - delta)* k[capital]) + beta*value[findall(k_line[capital,state] .== k)[1],:]'*p_z[state, :]
                 end
             end # for k
         end # for z
@@ -325,20 +354,25 @@ value_function_accelerator_brute = function(;v_0 = v0, k_len = 500, z_len = 7, t
     
         error = maximum(abs.(value - v_next))
         value = copy((1 - inert)*v_next + inert*value)
-        count = count + 1
-
+        count += 1
     end
 
-    return value, k_line, c
+    zmat = repeat(z,1,k_len)'
+    kmat = repeat(k,1,z_len)
+    c = zmat.*(kmat.^alpha) - k_line + (1-delta)*kmat
 
+    return value, k_line, c
 end # function
 
-v0 = accel_brute = @time value_function_accelerator_brute(v_0 = zeros(100,7), k_len = 100)[1]
+accel_brute = @time value_function_accelerator_brute();
 
+#########################################
+############### Questão 5 ###############
+#########################################
 
-# Multi grid
+############## Multi grid ###############
 # Função que faz a interpolação da função valor
-lin_interpol = function(minsize, maxsize, value; z_len = 7)    
+lin_interpol = function(minsize::Int64, maxsize::Int64, value::Array{Float64}; z_len = 7::Int64)    
     
     step = Int(maxsize/minsize)
     v_1 = zeros(maxsize, z_len)
@@ -351,22 +385,27 @@ lin_interpol = function(minsize, maxsize, value; z_len = 7)
     return v_1
 end
 
-value_function_mg = function(g1, g2, g3; v_0 = v0, z_len = 7, tol = 1e-4,
-    beta = 0.987, mu = 2, alpha = 1 / 3, delta = 0.012, rho = 0.95, sigma = 0.007, inert = 0)
+value_function_mg = function(g1::Int64, g2::Int64, g3::Int64; v_0::Array{Float64} = v0, z_len::Int64 = 7, tol::Float64 = 1e-4,
+    beta::Float64 = 0.987, mu::Float64 = 2.0, alpha::Float64 = 1 / 3, delta::Float64 = 0.012, rho::Float64 = 0.95, sigma::Float64 = 0.007, inert::Float64 = 0.0,
+    kss::Float64 = k_ss)
 
-    value1 = value_function_brute(v_0 = zeros(g1, z_len), k_len = g1, tol = tol)[1]
+    value1 = @time value_function_accelerator_brute(v_0 = zeros(g1, z_len), k_len = g1, tol = tol)[1]
 
     v1 = lin_interpol(g1, g2, value1)
 
-    value2 = value_function_brute(v_0 = v1, k_len = g2, tol = tol)[1]
+    value2 = @time value_function_accelerator_brute(v_0 = v1, k_len = g2, tol = tol)[1]
 
     v2 = lin_interpol(g2, g3, value2)
 
-    value, k_line, c = value_function_brute(v_0 = v2, k_len = g3, tol = tol)
+    value, k_line, c = @time value_function_monotone(v_0 = v2, k_len = g3, tol = tol)
 
     return value, k_line, c
 end # function
 
 multigrid = @time value_function_mg(100, 500, 5000)
 
+plot(multigrid[3])
 
+#########################################
+############### Questão 6 ###############
+#########################################

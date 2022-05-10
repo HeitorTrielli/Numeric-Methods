@@ -18,6 +18,11 @@ utility = function(c; mu = 2)
    return (float(c)^(1 - mu) - 1)/(1 - mu)
 end
 
+
+teste = [1 2 3 4 5]
+@benchmark @. utility(grid_k - 1)
+@benchmark utility.(grid_k .- 1)
+
 z = grid_z
 p_z = prob_z
 k = grid_k
@@ -76,6 +81,35 @@ v_next[capital, state] = val[index]
 k_line[capital, state] = k_possible[index]
 c[capital, state] = z[state]*(k[capital]^alpha) - k_line[capital, state] + (1 - delta)* k[capital]
 
+@btime Threads.@threads for state in 1:z_len
+            for capital in 1:k_len  
+                k_possible = k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0]    
+                v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0, :]               
+                val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) .+ beta*v_possible*p_z[state, :]
+                v_next[capital, state] = maximum(val)
+                k_line[capital, state] = k_possible[argmax(val)]
+                c[capital, state] = z[state]*(k[capital]^alpha) - k_line[capital, state] + (1 - delta)* k[capital]
+            end # for k
+        end # for z
+
+@btime for i in 1:1
+    Threads.@threads for state in 1:z_len
+        for capital in 1:k_len  
+            k_possible = k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0]    
+            v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0, :]               
+            val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) .+ beta*v_possible*p_z[state, :]
+            v_next[capital, state] = maximum(val)
+            k_line[capital, state] = k_possible[argmax(val)]
+        end # for k
+    end # for z
+    zmat = repeat(z,1,k_len)'
+    kmat = repeat(k,1,z_len)
+    
+    c = zmat.*(kmat.^alpha) - k_line + (1-delta)*kmat
+
+end
+
+
 
 lastpos = function(val, k_possible)
     v = 0
@@ -125,8 +159,22 @@ value_function_brute = function(;v_0 = v0, z = grid_z, p_z = prob_z, k = grid_k,
         error = maximum(abs.(value - v_next))
         value = copy((1 - inert)*v_next + inert*value)
 
-        count = count + 1
+        count += 1
     end # while
 
     return value, k_line, c
 end; # function
+
+k_line
+
+zmat = repeat(z,1,k_len)'
+kmat = repeat(k,1,z_len)
+
+zmat.*kmat - k_line + (1-delta)*kmat
+
+zmat
+kmat
+
+
+count = 0
+
