@@ -68,7 +68,7 @@ value_function_brute = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500, z
     error = 1
     while error > tol
 
-        Threads.@threads for state in 1:z_len
+        @sync @distributed for state in 1:z_len
             for capital in 1:k_len  
                 k_possible = k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0]    
                 v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0, :]               
@@ -92,7 +92,6 @@ value_function_brute = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500, z
 end; # function
 
 brute_force = @time value_function_brute();
-brute_force = ProfileView.@profview value_function_brute()
 
 ####### Exploiting monotonicity #########
 value_function_monotone = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500, z_len::Int64 = 7, tol::Float64 = 1e-4,
@@ -146,6 +145,7 @@ value_function_monotone = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500
 end # function
 
 monotone = @time value_function_monotone(v_0 = zeros(500,7));
+
 
 ############### Concavity ###############
 lastpos = function(val::Array{Float64}, k_possible::Array{Float64}) # Função que vai retornar o ponto maximo da função e o seu respectivo k'
