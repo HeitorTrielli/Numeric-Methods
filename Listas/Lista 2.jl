@@ -32,13 +32,22 @@ beta, mu, alpha, delta, rho, sigma = 0.987, 2.0, 1/3, 0.012, 0.95, 0.007;
 
 # Definindo o capital de steady state
 k_ss = (alpha / (1 / beta - 1 + delta))^(1 / (1 - alpha));
+z_len = 7
+k_len = 500
+grid_z = exp.(tauchen(z_len)[2]); # Valores que exp(z_t) pode tomar 
+grid_k = LinRange(0.75*k_ss, 1.25*k_ss, k_len)
+zmat = repeat(grid_z,1,k_len)'
+kmat = repeat(grid_k,1,z_len)
 
-v0 = zeros(500, 7);
 
 ## A função de utilidade ##
 utility = function(c::Float64; mu::Float64 = 2.0)
    return (c^(1 - mu) - 1)/(1 - mu)
 end;
+
+v0 = 50*utility.(zmat.*(kmat.^alpha) + (1-delta)*kmat)
+
+plot(v0)
 
 #########################################
 ############### Questão 3 ###############
@@ -85,6 +94,8 @@ value_function_brute = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500, z
 end; # function
 
 brute_force = @time value_function_brute();
+
+plot(brute_force[3])
 
 ####### Exploiting monotonicity #########
 value_function_monotone = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500, z_len::Int64 = 7, tol::Float64 = 1e-4,
@@ -137,7 +148,7 @@ value_function_monotone = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500
     return value, k_line, c
 end # function
 
-monotone = @time value_function_monotone();
+monotone = @time value_function_monotone(v_0 = zeros(500,7));
 
 ############### Concavity ###############
 lastpos = function(val::Array{Float64}, k_possible::Array{Float64}) # Função que vai retornar o ponto maximo da função e o seu respectivo k'
@@ -182,7 +193,6 @@ value_function_concave = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500,
         error = maximum(abs.(value - v_next))
         value = copy((1 - inert)*v_next + inert*value)
         count += 1
-        println(error)
     end # while
     zmat = repeat(z,1,k_len)'
     kmat = repeat(k,1,z_len)
@@ -386,7 +396,15 @@ value_function_mg = function(g1::Int64, g2::Int64, g3::Int64; v_0::Array{Float64
     beta::Float64 = 0.987, mu::Float64 = 2.0, alpha::Float64 = 1 / 3, delta::Float64 = 0.012, rho::Float64 = 0.95, sigma::Float64 = 0.007, inert::Float64 = 0.0,
     kss::Float64 = k_ss)
 
-    value1 = @time value_function_brute(v_0 = zeros(g1, z_len), k_len = g1, tol = tol)[1]
+
+    k = LinRange(0.75*kss, 1.25*kss, g1)
+    z = tauchen(z_len)[2]
+    zmat = repeat(z,1,g1)'
+    kmat = repeat(k,1,z_len)
+
+    v0 = 13*log.(zmat.*(kmat.^alpha) + (1-delta)*kmat)
+    
+    value1 = @time value_function_brute(v_0 = v0, k_len = g1, tol = tol)[1]
 
     v1 = lin_interpol(g1, g2, value1)
 
@@ -399,8 +417,10 @@ value_function_mg = function(g1::Int64, g2::Int64, g3::Int64; v_0::Array{Float64
     return value, k_line, c
 end # function
 
-multigrid = @time value_function_mg(100, 500, 5000)
 
+
+multigrid = @time value_function_mg(100, 500, 5000)
+plot(brute_force[1])
 
 #########################################
 ############### Questão 6 ###############
