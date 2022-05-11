@@ -1,6 +1,5 @@
 using Plots, BenchmarkTools, Distributions, Distributed, ProfileView, QuantEcon # Pacotes que estou usando
 
-
 Threads.nthreads()
 
 tauchen = function (grid_len::Int64; mu::Float64 = 0.0, sigma::Float64 = 0.007, rho::Float64 = 0.95, m::Float64 = 3.0)
@@ -35,7 +34,7 @@ k_ss = (alpha / (1 / beta - 1 + delta))^(1 / (1 - alpha));
 z_len = 7
 k_len = 500
 grid_z = exp.(tauchen(z_len)[2]); # Valores que exp(z_t) pode tomar 
-grid_k = LinRange(0.75*k_ss, 1.25*k_ss, k_len)
+grid_k = Array(LinRange(0.75*k_ss, 1.25*k_ss, k_len))
 zmat = repeat(grid_z,1,k_len)'
 kmat = repeat(grid_k,1,z_len)
 
@@ -92,8 +91,8 @@ value_function_brute = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500, z
     return value::Array{Float64}, k_line::Array{Float64}, c::Array{Float64}
 end; # function
 
-brute_force = ProfileView.@profview value_function_brute();
-
+brute_force = @time value_function_brute();
+brute_force = ProfileView.@profview value_function_brute()
 
 ####### Exploiting monotonicity #########
 value_function_monotone = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500, z_len::Int64 = 7, tol::Float64 = 1e-4,
@@ -437,9 +436,14 @@ fnew(k, state, capital, alpha) = k[z[state]*(k[capital]^alpha) .+ (1 - delta)*k[
 @btime f(k, 1, 1, 1/3);
 @btime fnew(k, 1, 1, 1/3);
 
-test(k, state, capital, alpha, value) = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0, :]     
+teste = function(k::Array{Float64}, state::Int64 = 1, capital::Int64 = 1, alpha::Float64 = 1/3, value::Array{Float64} = v0) 
+    x = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0, :]
+    return x
+end
 
-@btime
+ProfileView.@profview for i in 1:1000 teste(k) end
 
-ProfileView.@profview for i in 1:1000  utility.(z[1]*(k[1]^(1/3)) + (1 - delta)*k[capital]) .- k + beta*v0*p_z[state, :] end;
+@code_warntype teste(k)
+
+@btime teste(k)
 
