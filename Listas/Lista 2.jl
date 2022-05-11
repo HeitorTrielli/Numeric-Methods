@@ -1,4 +1,4 @@
-using Plots, BenchmarkTools, Distributions, Distributed, ProfileView # Pacotes que estou usando
+using Plots, BenchmarkTools, Distributions, Distributed, ProfileView, QuantEcon # Pacotes que estou usando
 
 
 Threads.nthreads()
@@ -47,7 +47,6 @@ end;
 
 v0 = 50*utility.(zmat.*(kmat.^alpha) + (1-delta)*kmat)
 
-plot(v0)
 
 #########################################
 ############### Questão 3 ###############
@@ -60,7 +59,7 @@ value_function_brute = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500, z
 
     z = exp.(tauchen(z_len)[2]); # Valores que exp(z_t) pode tomar 
     p_z = tauchen(z_len)[1]; # Matriz de transição de z
-    k = LinRange(0.75*kss, 1.25*kss, k_len); # Grid de capital
+    k = Array(LinRange(0.75*kss, 1.25*kss, k_len)); # Grid de capital
     
 
 
@@ -93,9 +92,8 @@ value_function_brute = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500, z
     return value::Array{Float64}, k_line::Array{Float64}, c::Array{Float64}
 end; # function
 
-brute_force = @time value_function_brute();
+brute_force = ProfileView.@profview value_function_brute();
 
-plot(brute_force[3])
 
 ####### Exploiting monotonicity #########
 value_function_monotone = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500, z_len::Int64 = 7, tol::Float64 = 1e-4,
@@ -104,7 +102,7 @@ value_function_monotone = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500
 
     z = exp.(tauchen(z_len)[2]); # Valores que exp(z_t) pode tomar 
     p_z = tauchen(z_len)[1]; # Matriz de transição de z
-    k = LinRange(0.75*kss, 1.25*kss, k_len); # Grid de capital
+    k = Array(LinRange(0.75*kss, 1.25*kss, k_len)); # Grid de capital
 
     # Value function, policy function on c, policy function on k and variable for iteration
     k_line, v_next = zeros(k_len, z_len), zeros(k_len, z_len)
@@ -116,7 +114,7 @@ value_function_monotone = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500
         for capital in 1:k_len
             k_possible = k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k.> 0]    # the values of asset for which the consumption is positive
             v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0, :]    #the value function at each of the assets above              
-            val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) .+ beta*v_possible*p_z[state, :]
+            val = utility.(z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k_possible) + beta*v_possible*p_z[state, :]
             v_next[capital, state] = maximum(val)
             k_line[capital, state] = k_possible[argmax(val)]
         end # for k
@@ -130,7 +128,7 @@ value_function_monotone = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500
             for capital in 1:k_len
                 k_possible = k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0 .&& k .>= k_line[capital, state]]    # the values of asset for which the consumption is positive
                 v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0 .&& k .>= k_line[capital, state], :]               
-                val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) .+ beta*v_possible*p_z[state, :]
+                val = utility.(z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k_possible) + beta*v_possible*p_z[state, :]
                 v_next[capital, state] = maximum(val)
                 k_line[capital, state] = k_possible[argmax(val)]
             end # for k
@@ -173,7 +171,7 @@ value_function_concave = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500,
 
     z = exp.(tauchen(z_len)[2]); # Valores que exp(z_t) pode tomar 
     p_z = tauchen(z_len)[1]; # Matriz de transição de z
-    k = LinRange(0.75*kss, 1.25*kss, k_len); # Grid de capital
+    k = Array(LinRange(0.75*kss, 1.25*kss, k_len)); # Grid de capital
 
     # Value function, policy function on c, policy function on k and variable for iteration
     k_line, v_next = zeros(k_len, z_len), zeros(k_len, z_len)
@@ -186,7 +184,7 @@ value_function_concave = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500,
             for capital in 1:k_len  
                 k_possible = k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0]    
                 v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0, :]               
-                val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) .+ beta*v_possible*p_z[state, :]
+                val = utility.(z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k_possible) + beta*v_possible*p_z[state, :]
                 v_next[capital, state], k_line[capital, state] = lastpos(val, k_possible)
             end # for k
         end # for z
@@ -212,7 +210,7 @@ value_function = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500, z_len::
 
     z = exp.(tauchen(z_len)[2]); # Valores que exp(z_t) pode tomar 
     p_z = tauchen(z_len)[1]; # Matriz de transição de z
-    k = LinRange(0.75*kss, 1.25*kss, k_len); # Grid de capital
+    k = Array(LinRange(0.75*kss, 1.25*kss, k_len)); # Grid de capital
 
     value = v_0
 
@@ -225,7 +223,7 @@ value_function = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500, z_len::
         for capital in 1:k_len
             k_possible = k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k.> 0]    # the values of asset for which the consumption is positive
             v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0, :]    #the value function at each of the assets above              
-            val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) .+ beta*v_possible*p_z[state, :]
+            val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) + beta*v_possible*p_z[state, :]
             v_next[capital, state], k_line[capital, state] = lastpos(val, k_possible)
         end # for k
     end # for z
@@ -238,7 +236,7 @@ value_function = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500, z_len::
             for capital in 1:k_len
                 k_possible = k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0 .&& k .>= k_line[capital, state]]    # the values of asset for which the consumption is positive
                 v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0 .&& k .>= k_line[capital, state], :]               
-                val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) .+ beta*v_possible*p_z[state, :]
+                val = utility.(z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k_possible) + beta*v_possible*p_z[state, :]
                 v_next[capital, state], k_line[capital, state] = lastpos(val, k_possible)
             end # for k
         end # for z
@@ -270,7 +268,7 @@ value_function_accelerator = function(;v_0::Array{Float64} = v0, k_len::Int64 = 
 
     z = exp.(tauchen(z_len)[2]); # Valores que exp(z_t) pode tomar 
     p_z = tauchen(z_len)[1]; # Matriz de transição de z
-    k = LinRange(0.75*kss, 1.25*kss, k_len); # Grid de capital
+    k = Array(LinRange(0.75*kss, 1.25*kss, k_len)); # Grid de capital
 
     # Value function, policy function on c, policy function on k and variable for iteration
     k_line, v_next = zeros(k_len, z_len), zeros(k_len, z_len)
@@ -284,7 +282,7 @@ value_function_accelerator = function(;v_0::Array{Float64} = v0, k_len::Int64 = 
         for capital in 1:k_len
             k_possible = k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k.> 0]    # the values of asset for which the consumption is positive
             v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0, :]    #the value function at each of the assets above              
-            val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) .+ beta*v_possible*p_z[state, :]
+            val = utility.(z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k_possible) + beta*v_possible*p_z[state, :]
             v_next[capital, state] = maximum(val)
             k_line[capital, state] = k_possible[argmax(val)]
         end # for k
@@ -299,7 +297,7 @@ value_function_accelerator = function(;v_0::Array{Float64} = v0, k_len::Int64 = 
                 if count <= start || count%reset == 0
                     k_possible = k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0 .&& k .>= k_line[capital, state]]    # the values of asset for which the consumption is positive
                     v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0 .&& k .>= k_line[capital, state], :]               
-                    val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) .+ beta*v_possible*p_z[state, :]
+                    val = utility.(z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k_possible) + beta*v_possible*p_z[state, :]
                     v_next[capital, state] = maximum(val)
                     k_line[capital, state] = k_possible[argmax(val)]
                 else
@@ -330,7 +328,7 @@ value_function_accelerator_brute = function(;v_0::Array{Float64} = v0, k_len::In
 
     z = exp.(tauchen(z_len)[2]); # Valores que exp(z_t) pode tomar 
     p_z = tauchen(z_len)[1]; # Matriz de transição de z
-    k = LinRange(0.75*kss, 1.25*kss, k_len); # Grid de capital
+    k = Array(LinRange(0.75*kss, 1.25*kss, k_len)); # Grid de capital
 
     # Value function, policy function on c, policy function on k and variable for iteration
     k_line, v_next = zeros(k_len, z_len), zeros(k_len, z_len)
@@ -349,7 +347,7 @@ value_function_accelerator_brute = function(;v_0::Array{Float64} = v0, k_len::In
                 if count <= start || count%reset == 0
                     k_possible = k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0]    # the values of asset for which the consumption is positive
                     v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0, :]               
-                    val = utility.(z[state]*(k[capital]^alpha) .- k_possible .+ (1 - delta)*k[capital]) .+ beta*v_possible*p_z[state, :]
+                    val = utility.(z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k_possible) + beta*v_possible*p_z[state, :]
                     v_next[capital, state] = maximum(val)
                     k_line[capital, state] = k_possible[argmax(val)]
                 else
@@ -397,7 +395,7 @@ value_function_mg = function(g1::Int64, g2::Int64, g3::Int64; v_0::Array{Float64
     kss::Float64 = k_ss)
 
 
-    k = LinRange(0.75*kss, 1.25*kss, g1)
+    k = Array(LinRange(0.75*kss, 1.25*kss, g1))
     z = tauchen(z_len)[2]
     zmat = repeat(z,1,g1)'
     kmat = repeat(k,1,z_len)
@@ -426,4 +424,22 @@ plot(brute_force[1])
 ############### Questão 6 ###############
 #########################################
 
+k = grid_k
+k = Array(k)
+z = grid_z
+p_z = tauchen(7)[1]
+state = 1
+capital = 1
+
+f(k, state, capital, alpha) = k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0] ; 
+fnew(k, state, capital, alpha) = k[z[state]*(k[capital]^alpha) .+ (1 - delta)*k[capital] .- k .> 0] ; 
+
+@btime f(k, 1, 1, 1/3);
+@btime fnew(k, 1, 1, 1/3);
+
+test(k, state, capital, alpha, value) = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0, :]     
+
+@btime
+
+ProfileView.@profview for i in 1:1000  utility.(z[1]*(k[1]^(1/3)) + (1 - delta)*k[capital]) .- k + beta*v0*p_z[state, :] end;
 
