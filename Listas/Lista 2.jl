@@ -1,4 +1,4 @@
-using Plots, BenchmarkTools, Distributions, Distributed, ProfileView, Traceur # Pacotes que estou usando
+using Plots, BenchmarkTools, Distributions, Distributed, ProfileView, Roots # Pacotes que estou usando
 
 Threads.nthreads()
 
@@ -94,7 +94,7 @@ value_function_brute = function(;v_0::Array{Float64} = v0, tol::Float64 = 1e-4,
         @sync @distributed for state in 1:z_len
             for capital in 1:k_len  
                 k_possible = k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0]    
-                v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0, :]               
+                v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0, :]            
                 val = utility.(z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k_possible) + beta*v_possible*p_z[state, :]
                 s = argmax(val)
                 v_next[capital, state] = val[s]
@@ -113,7 +113,6 @@ end; # function
 
 brute_force = @time value_function_brute();
 euler_brute = EEE(brute_force[3], brute_force[2])
-
 
 ####### Exploiting monotonicity #########
 value_function_monotone = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500, z_len::Int64 = 7, tol::Float64 = 1e-4,
@@ -154,8 +153,9 @@ value_function_monotone = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500
     return value::Array{Float64,2}, k_line::Array{Float64,2}, c::Array{Float64,2}
 end # function
 
-monotone = @time value_function_monotone(v_0 = v0);
+monotone = @time value_function_monotone();
 euler_monotone = EEE(monotone[3], monotone[2])
+
 
 
 ############### Concavity ###############
@@ -195,7 +195,7 @@ value_function_concave = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500,
 
         @sync @distributed for state in 1:z_len
             for capital in 1:k_len  
-                k_possible = k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0]    
+                k_possible = k[(z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k) .> 0]    
                 v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0, :]               
                 val = utility.(z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k_possible) + beta*v_possible*p_z[state, :]
                 v_next[capital, state], k_line[capital, state] = lastpos(val, k_possible)[1:2]
@@ -212,6 +212,7 @@ value_function_concave = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500,
 
     return value::Array{Float64,2}, k_line::Array{Float64,2}, c::Array{Float64,2}
 end; # function
+
 
 concave = @time value_function_concave();
 euler_concave = EEE(concave[3], concave[2])
@@ -236,10 +237,9 @@ value_function = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500, z_len::
     while error > tol
 
         @sync @distributed for state in 1:z_len 
+            s=1
             for capital in 1:k_len
-                if capital == 1
-                    s = 1
-                end
+ 
                 k_possible = k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0 .&& k .>= k[s]]    # the values of asset for which the consumption is positive
                 v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0 .&& k .>= k[s], :]               
                 val = utility.(z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k_possible) + beta*v_possible*p_z[state, :]
@@ -294,9 +294,7 @@ value_function_accelerator = function(;v_0::Array{Float64} = v0, k_len::Int64 = 
                     k_possible = k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0 .&& k .>= k[s]]    # the values of asset for which the consumption is positive
                     v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0 .&& k .>= k[s], :]               
                     val = utility.(z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k_possible) + beta*v_possible*p_z[state, :]
-                    s = argmax(val)
-                    v_next[capital, state] = val[s]
-                    k_line[capital, state] = k_possible[s]
+                    v_next[capital, state], k_line[capital, state], s = lastpos(val, k_possible)
                 else
                     v_next[capital, state] = utility(z[state]*(k[capital]^alpha) - k_line[capital, state] + (1 - delta)* k[capital]) + beta*value[findall(k_line[capital,state] .== k)[1],:]'*p_z[state, :]
                 end
@@ -317,6 +315,10 @@ end # function
 
 accelerator = @time value_function_accelerator();
 euler_accelerator = EEE(accelerator[3], accelerator[2])
+
+ProfileView.@profview value_function_accelerator()
+ProfileView.@profview value_function_brute()
+
 
 ## Accelerator sem usar monotonicidade ##
 value_function_accelerator_brute = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500, z_len::Int64 = 7, tol::Float64 = 1e-4,
@@ -401,23 +403,20 @@ value_function_mg = function(g1::Int64, g2::Int64, g3::Int64; z_len::Int64 = 7, 
 
     v0 = 13*log.(zmat.*(kmat.^alpha) + (1-delta)*kmat)
     
-    value1 = value_function_brute(v_0 = v0, k_len = g1, tol = tol)[1]
+    value1 = @time value_function(v_0 = v0, k_len = g1, tol = tol)[1]
 
     v1 = lin_interpol(g1, g2, value1)
 
-    value2 = value_function_brute(v_0 = v1, k_len = g2, tol = tol)[1]
+    value2 = @time value_function(v_0 = v1, k_len = g2, tol = tol)[1]
 
     v2 = lin_interpol(g2, g3, value2)
 
-    value, k_line, c = value_function_brute(v_0 = v2, k_len = g3, tol = tol)
+    value, k_line, c = @time value_function(v_0 = v2, k_len = g3, tol = tol)
 
     return value, k_line, c
 end # function
 
-
-
 multigrid = @time value_function_mg(100, 500, 5000)
-
 
 
 #########################################
@@ -425,3 +424,61 @@ multigrid = @time value_function_mg(100, 500, 5000)
 #########################################
 
 
+c0 = zmat.*(kmat.^alpha)
+
+c = c0[1,:]
+z = grid_z
+k_next = grid_k
+
+E = (u_line.(c).*(alpha*z*(k_next^(alpha-1)) .+ (1-delta)))'p_z[1,:]
+
+
+z_grid = grid_z
+
+func = function(k; c = c0[1,:], probs =p_z[1,:], z = z_grid, k_next = k0, delta = 0.012, alpha = 1/3, beta =0.987)
+    E = (u_line.(c).*(alpha*z*(k_next.^(alpha-1)) .+ (1-delta)))'probs
+    z*(k^alpha) + (1-delta)*k - k_next - u_inv(beta*E)
+end
+
+func(1)
+
+find_zero(func, (-10, 70))
+
+
+value_function_egm = function(;c_0::Array{Float64} = c0, k = grid_k, tol::Float64 = 1e-4,
+    beta::Float64 = 0.987, mu::Float64 = 2.0, alpha::Float64 = 1 / 3, delta::Float64 = 0.012, rho::Float64 = 0.95, sigma::Float64 = 0.007, inert::Float64 = 0.0,
+    kss::Float64 = k_ss, k_len::Int64 = 500, z_len::Int64 = 7)
+
+    z = exp.(tauchen(z_len)[2]); # Valores que exp(z_t) pode tomar 
+    p_z = tauchen(z_len)[1]; # Matriz de transição de z
+    k = Array(LinRange(0.75*kss, 1.25*kss, k_len)); # Grid de capital
+
+    # Value function, policy function on c, policy function on k and variable for iteration
+    k_line, v_next = zeros(k_len, z_len), zeros(k_len, z_len)
+    value = v_0
+    error = 1.0
+
+
+    while error > tol
+        @sync @distributed for state in 1:z_len
+            for capital in 1:k_len  
+
+                
+
+
+                k_possible = k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0]    
+                v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0, :]               
+                val = utility.(z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k_possible) + beta*v_possible*p_z[state, :]
+                s = argmax(val)
+                v_next[capital, state] = val[s]
+                k_line[capital, state] = k_possible[s]
+            end # for k
+        end # for z
+        error = maximum(abs.(value - v_next))
+        value = copy((1 - inert)*v_next + inert*value)
+    end # while
+    zmat = repeat(z,1,k_len)'
+    kmat = repeat(k,1,z_len)   
+    c = zmat.*(kmat.^alpha) - k_line + (1-delta)*kmat
+    return value::Array{Float64,2}, k_line::Array{Float64,2}, c::Array{Float64,2}
+end; # function
