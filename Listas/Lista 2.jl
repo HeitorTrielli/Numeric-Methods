@@ -1,4 +1,4 @@
-using Plots, BenchmarkTools, Distributions, Distributed, ProfileView, Roots # Pacotes que estou usando
+using Plots, BenchmarkTools, Distributions, Distributed, ProfileView, Roots, DataInterpolations # Pacotes que estou usando
 
 Threads.nthreads()
 
@@ -46,7 +46,7 @@ utility = function(c::Float64; mu::Float64 = 2.0)
    return (c^(1 - mu) - 1)/(1 - mu)
 end;
 
-v0 = utility.(zmat.*(kmat.^alpha));
+v0 = utility.(zmat.*(kmat.^alpha)- delta*kmat);
 
 #########################################
 ############### Questão 3 ###############
@@ -409,17 +409,14 @@ multigrid = @time value_function_mg(100, 500, 5000)
 ############### Questão 6 ###############
 #########################################
 
-c0 = zmat.*(kmat.^alpha)
+c0 = zmat.*(kmat.^alpha) - delta*kmat
 
 z = grid_z
 k_next = grid_k
-alpha*z*(k_next^(alpha-1)) 
-E = (u_line.(c).*(alpha*z*(k_next^(alpha-1)) .+ (1-delta)))'p_z[1,:]
 z_grid = grid_z
-prob = p_z[1,:]
 
 
-func = function(k, zstate,; k_exo, c = c0[1,:], probs =p_z[1,:], z = z_grid, delta = 0.012, alpha = 1/3, beta =0.987)
+func = function(k, zstate,; k_exo, c = c0[1,:], probs = p_z[1,:], z = z_grid, delta = 0.012, alpha = 1/3, beta =0.987)
     E = (u_line.(c).*(alpha*z*(k_exo^(alpha-1)).+(1-delta)))'prob
     (1-delta)*k - k_exo - u_inv(beta*E) .+ zstate*(k^alpha)
 end
@@ -433,8 +430,16 @@ for state in 1:z_len
         a[capital, state] = fzero(x -> func(x, z[state], k_exo = k[capital], probs = p_z[state,:], c = c0[state,:]), 30)
     end # for k
 end # for z
+k
 
 
+spl = Spline1D(a[:,1], k)
+
+plot(a[:,1])
+
+plot(monotone[2] - a)
+
+plot(monotone[2] - kmat)
 
 
 
@@ -447,15 +452,21 @@ value_function_egm = function(;c0::Array{Float64} = c0, k = grid_k, tol::Float64
     k = Array(LinRange(0.75*kss, 1.25*kss, k_len)); # Grid de capital
 
     # Value function, policy function on c, policy function on k and variable for iteration
-    a = zeros(k_len, z_len)
+    a, k_next = zeros(k_len, z_len), zeros(k_len, z_len)
     error = 1.0
     while error > tol
         @sync @distributed for state in 1:z_len
             for capital in 1:k_len  
                 a[capital, state] = fzero(x -> func(x, z[state], k_exo = k[capital], probs = p_z[state,:], c = c0[state,:]), a[capital, state])
-                c[capital, state] = z[state]*(a[capital, state]^alpha) + (1-delta)*a[capital, state] - k[capital]
+            end # for k
+            spl = CubicSpline(k,a[:,state])
+            for capital in 1:k_len  
+                k_next[capital, state] = spl(k[capital])
+                c[capital, state] = z[state]*(k[capital]^alpha) + (1-delta)*k[capital] - k_next[capital, state]
             end # for k
         end # for z
+
+
         error = maximum(abs.(c - c0))
         println(error)
         c0 = copy((1 - inert)*c + inert*c0)
@@ -464,3 +475,5 @@ value_function_egm = function(;c0::Array{Float64} = c0, k = grid_k, tol::Float64
 end; # function
 
 test = @time value_function_egm()
+
+plot(test[2])
