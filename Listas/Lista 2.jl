@@ -1,52 +1,56 @@
-using Plots, BenchmarkTools, Distributions, Distributed, ProfileView, Roots, DataInterpolations # Pacotes que estou usando
+using Plots, BenchmarkTools, Distributions, Distributed, ProfileView, Roots, Dierckx # Pacotes que estou usando
 
 Threads.nthreads()
+#start
+    tauchen = function(grid_len::Int64; mu::Float64 = 0.0, sigma::Float64 = 0.007, rho::Float64 = 0.95, m::Float64 = 3.0)
 
-tauchen = function(grid_len::Int64; mu::Float64 = 0.0, sigma::Float64 = 0.007, rho::Float64 = 0.95, m::Float64 = 3.0)
+        theta_max = m * sigma / (sqrt(1 - rho^2)) + mu # definindo o maior valor do grid
+        theta_min = - theta_max + 2 * mu # definindo o menor valor do grid
+        grid = Array(LinRange(theta_min, theta_max, grid_len)) # Cria um vetor de n pontos entre theta_max e theta_min em que a distancia entre os pontos sequencias é igual
 
-    theta_max = m * sigma / (sqrt(1 - rho^2)) + mu # definindo o maior valor do grid
-    theta_min = - theta_max + 2 * mu # definindo o menor valor do grid
-    grid = Array(LinRange(theta_min, theta_max, grid_len)) # Cria um vetor de n pontos entre theta_max e theta_min em que a distancia entre os pontos sequencias é igual
+        d = Normal(mu, 1) # d vira normal(mu,1), que será usado para computar a PDF dos erros na hora de achar as probabilidades de transição
+        delta = (maximum(grid) - minimum(grid)) / (length(grid) - 1) # distância dos pontos subsequentes do grid
 
-    d = Normal(mu, 1) # d vira normal(mu,1), que será usado para computar a PDF dos erros na hora de achar as probabilidades de transição
-    delta = (maximum(grid) - minimum(grid)) / (length(grid) - 1) # distância dos pontos subsequentes do grid
+        vec_1 = cdf(d,((minimum(grid) .- rho * grid .+ delta / 2) / sigma)) # vetor das probabilidades de ir para o menor valor do grid, dado cada estado anterior do grid; cdf(d, x) retorna a cdf da distribuição d no valor x
+        vec_n = 1 .- cdf(d,((maximum(grid) .- rho * grid .- delta / 2) / sigma)) # análogo para o maior valor do grid
+        grid_interno = grid[2:(length(grid) - 1)] # valores não extremos do grid
 
-    vec_1 = cdf(d,((minimum(grid) .- rho * grid .+ delta / 2) / sigma)) # vetor das probabilidades de ir para o menor valor do grid, dado cada estado anterior do grid; cdf(d, x) retorna a cdf da distribuição d no valor x
-    vec_n = 1 .- cdf(d,((maximum(grid) .- rho * grid .- delta / 2) / sigma)) # análogo para o maior valor do grid
-    grid_interno = grid[2:(length(grid) - 1)] # valores não extremos do grid
+        pij = function(j, i = grid) # função que vai computar o vetor de probabilidades de ir para o estado (não extremo) j dado cada estado anterior do grid
+            cdf(d,((j + delta/2 .- rho * i) / sigma)) - cdf(d,((j - delta / 2 .- rho * i) / sigma))                             
+        end
 
-    pij = function(j, i = grid) # função que vai computar o vetor de probabilidades de ir para o estado (não extremo) j dado cada estado anterior do grid
-        cdf(d,((j + delta/2 .- rho * i) / sigma)) - cdf(d,((j - delta / 2 .- rho * i) / sigma))                             
-    end
+        mat_interna = reduce(hcat, pij.(grid_interno))  # aplica pij em cada ponto do grid interno; reduce: transforma o vetor de vetores em uma matriz
+        
+        probs = [vec_1 mat_interna vec_n] # gerando a matriz de transição
 
-    mat_interna = reduce(hcat, pij.(grid_interno))  # aplica pij em cada ponto do grid interno; reduce: transforma o vetor de vetores em uma matriz
-    
-    probs = [vec_1 mat_interna vec_n] # gerando a matriz de transição
+        return probs::Array{Float64,2}, Array(grid)::Array{Float64,1}
+    end;
+    # Definindo as variáveis
+    beta, mu, alpha, delta, rho, sigma = 0.987, 2.0, 1/3, 0.012, 0.95, 0.007;
 
-    return probs::Array{Float64,2}, Array(grid)::Array{Float64,1}
-end;
-# Definindo as variáveis
-beta, mu, alpha, delta, rho, sigma = 0.987, 2.0, 1/3, 0.012, 0.95, 0.007;
+    # Definindo o capital de steady state
 
-# Definindo o capital de steady state
+    k_ss = (alpha / (1 / beta - 1 + delta))^(1 / (1 - alpha));
+    z_len = 7;
+    k_len = 500;
+    grid_z = exp.(tauchen(z_len)[2]); # Valores que exp(z_t) pode tomar 
+    grid_k = Array(LinRange(0.75*k_ss, 1.25*k_ss, k_len));
+    zmat = repeat(grid_z,1,k_len)';
+    kmat = repeat(grid_k,1,z_len);
+    z = exp.(tauchen(z_len)[2]); # Valores que exp(z_t) pode tomar 
+    p_z = tauchen(z_len)[1]; # Matriz de transição de z
+    k = Array(LinRange(0.75*k_ss, 1.25*k_ss, k_len)); # Grid de capital
 
-k_ss = (alpha / (1 / beta - 1 + delta))^(1 / (1 - alpha));
-z_len = 7;
-k_len = 500;
-grid_z = exp.(tauchen(z_len)[2]); # Valores que exp(z_t) pode tomar 
-grid_k = Array(LinRange(0.75*k_ss, 1.25*k_ss, k_len));
-zmat = repeat(grid_z,1,k_len)';
-kmat = repeat(grid_k,1,z_len);
-z = exp.(tauchen(z_len)[2]); # Valores que exp(z_t) pode tomar 
-p_z = tauchen(z_len)[1]; # Matriz de transição de z
-k = Array(LinRange(0.75*k_ss, 1.25*k_ss, k_len)); # Grid de capital
+    ## A função de utilidade ##
+    utility = function(c::Float64; mu::Float64 = 2.0)
+    return (c^(1 - mu) - 1)/(1 - mu)
+    end;
+    @btime c0 = zmat.*(kmat.^alpha) - delta*kmat;
+    v0 = utility.(c0);
 
-## A função de utilidade ##
-utility = function(c::Float64; mu::Float64 = 2.0)
-   return (c^(1 - mu) - 1)/(1 - mu)
-end;
 
-v0 = utility.(zmat.*(kmat.^alpha)- delta*kmat);
+
+# 
 
 #########################################
 ############### Questão 3 ###############
@@ -62,19 +66,24 @@ u_inv = function(c, mu = 2.0)
     c^(-1/mu)
 end
 
+brute_force[2]
+
 # A função
 EEE = function(c::Array{Float64,2}, policy::Array{Float64,2}, k_len = 500, z_len = 7, k_grid = grid_k, probs = p_z, mu = 2.0, z = grid_z, alpha = 1/3, delta = 0.012)
     euler = zeros(k_len, z_len)
     for state in 1:z_len
         for capital in 1:k_len
             index = findall(policy[capital, state] .== k_grid)[1]
-            c_line=c[index,:]
+            c_line = c[index,:]
             E = (u_line.(c_line).*(alpha*z*(policy[capital,state]^(alpha-1)) .+ (1-delta)))'probs[state,:]
             euler[capital, state] = log10(abs(1 - u_inv(beta*E) / c[capital,state]))  
         end
     end 
     return euler
 end
+brute_force[3]
+brute_force[2]
+EEE(brute_force[3], brute_force[2])
 
 
 ############## Brute Force ##############
@@ -96,7 +105,9 @@ value_function_brute = function(;v_0::Array{Float64} = v0, tol::Float64 = 1e-4,
                 k_possible = k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0]    
                 v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0, :]            
                 val = utility.(z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k_possible) + beta*v_possible*p_z[state, :]
-                v_next[capital, state], k_line[capital, state] = findmax(val)
+                s = argmax(val)
+                v_next[capital, state] = val[s]
+                k_line[capital, state] = k_possible[s]
             end # for k
         end # for z
         error = maximum(abs.(value - v_next))
@@ -112,7 +123,6 @@ end; # function
 brute_force = @time value_function_brute();
 euler_brute = EEE(brute_force[3], brute_force[2])
 
-plot(euler_brute)
 ####### Exploiting monotonicity #########
 value_function_monotone = function(;v_0::Array{Float64} = v0, k_len::Int64 = 500, z_len::Int64 = 7, tol::Float64 = 1e-4,
     beta::Float64 = 0.987, mu::Float64 = 2.0, alpha::Float64 = 1 / 3, delta::Float64 = 0.012, rho::Float64 = 0.95, sigma::Float64 = 0.007, inert::Float64 = 0.0,
@@ -409,41 +419,77 @@ multigrid = @time value_function_mg(100, 500, 5000)
 ############### Questão 6 ###############
 #########################################
 
-c0 = zmat.*(kmat.^alpha) - delta*kmat
 
 z = grid_z
-k_next = grid_k
-z_grid = grid_z
+k_next = zeros(500, 7)
+
+@sync @distributed for state in 1:z_len
+    zstate = z[state]
+    for capital in 1:k_len
+        k_exo = k[capital]
+        func = function(k;  zstate = zstate, k_exo = k_exo  , c = c0[1,:], probs = p_z[1,:], z = grid_z, delta = 0.012, alpha = 1/3, beta =0.987)
+            E = (u_line.(c).*(alpha*z*(k_exo^(alpha-1)).+(1-delta)))'prob
+            (1-delta)*k - k_exo - u_inv(beta*E) .+ zstate*(k^alpha)
+        end
+        a[capital, state] = fzero(func, 30)
+    end # for k
+    spl = Spline1D(a[:,1], k)
+    for capital in 1:k_len  
+        k_next[capital, state] = spl(k[capital])
+        c[capital, state] = z[state]*(k[capital]^alpha) + (1-delta)*k[capital] - k_next[capital, state]
+    end # for k
+end # for z   
+capital = 1
+state = 1
+c = copy(c0)
+a = zeros(500,7)
+zstate = z[state]
+prob = p_z[state,:]
+k_exo = k[capital]
+ck = c[capital, :]
+prob = p_z[state,:]
+prob
+
+E = (u_line.(ck).*(alpha*z*(k_exo^(alpha-1)).+(1-delta)))'*prob
 
 
-func = function(k, zstate,; k_exo, c = c0[1,:], probs = p_z[1,:], z = z_grid, delta = 0.012, alpha = 1/3, beta =0.987)
-    E = (u_line.(c).*(alpha*z*(k_exo^(alpha-1)).+(1-delta)))'prob
+
+func = function(k;  zstate = zstate, k_exo = k_exo  , c = ck, prob = prob, z = grid_z, delta = 0.012, alpha = 1/3, beta =0.987)
+    E = (u_line.(ck).*(alpha*z*(k_exo^(alpha-1)).+(1-delta)))'*prob
     (1-delta)*k - k_exo - u_inv(beta*E) .+ zstate*(k^alpha)
 end
 
+fzero(func, 30)
+k_next = zeros(500,7)
+erro = 1
+c = copy(c0)
+for i in 1:300
+    @sync @distributed for state in 1:z_len
+        zstate = z[state]
+        prob = p_z[state,:]
+        for capital in 1:k_len
+            k_exo = k[capital]
+            ck = c0[capital, :]
+            prob = p_z[state,:]
+            func = function(k;  zstate = zstate, k_exo = k_exo  , c = ck, prob = prob, z = grid_z, delta = 0.012, alpha = 1/3, beta =0.987)
+                E = (u_line.(ck).*(alpha*z*(k_exo^(alpha-1)).+(1-delta)))'*prob
+                (1-delta)*k - k_exo - u_inv(beta*E) .+ zstate*(k^alpha)
+            end
+            a[capital, state] = fzero(func, 30)
+        end # for k
+        spl = Spline1D(a[:,1], k)
+        for capital in 1:k_len  
+            k_next[capital, state] = spl(k[capital])
+            c[capital, state] = z[state]*(k[capital]^alpha) + (1-delta)*k[capital] - k_next[capital, state]
+        end # for k
+    end # for z 
+    erro = maximum(abs.(c - c0))
+    println(erro)
+    c0 = copy(c)
 
-fzero(x -> func(x, z[1], k_exo = k[1], probs = p_z[1,:], c = c0[1,:]), 30)
+end
 
-
-for state in 1:z_len
-    for capital in 1:k_len  
-        a[capital, state] = fzero(x -> func(x, z[state], k_exo = k[capital], probs = p_z[state,:], c = c0[state,:]), 30)
-    end # for k
-end # for z
-k
-
-
-spl = Spline1D(a[:,1], k)
-
-plot(a[:,1])
-
-plot(monotone[2] - a)
-
-plot(monotone[2] - kmat)
-
-
-
-value_function_egm = function(;c0::Array{Float64} = c0, k = grid_k, tol::Float64 = 1e-4,
+value_function_egm = function(;c0::Array{Float64} = c0, v0 = v0, k = grid_k, tol::Float64 = 1e-4,
     beta::Float64 = 0.987, mu::Float64 = 2.0, alpha::Float64 = 1 / 3, delta::Float64 = 0.012, rho::Float64 = 0.95, sigma::Float64 = 0.007, inert::Float64 = 0.0,
     kss::Float64 = k_ss, k_len::Int64 = 500, z_len::Int64 = 7)
 
@@ -452,28 +498,47 @@ value_function_egm = function(;c0::Array{Float64} = c0, k = grid_k, tol::Float64
     k = Array(LinRange(0.75*kss, 1.25*kss, k_len)); # Grid de capital
 
     # Value function, policy function on c, policy function on k and variable for iteration
-    a, k_next = zeros(k_len, z_len), zeros(k_len, z_len)
-    error = 1.0
-    while error > tol
+    a, k_next, zeros(k_len, z_len), zeros(k_len, z_len)
+    erro = 1.0
+    while erro > tol
         @sync @distributed for state in 1:z_len
-            for capital in 1:k_len  
-                a[capital, state] = fzero(x -> func(x, z[state], k_exo = k[capital], probs = p_z[state,:], c = c0[state,:]), a[capital, state])
+            zstate = z[state]
+            prob = p_z[state,:]
+            for capital in 1:k_len
+                k_exo = k[capital]
+                ck = c0[capital, :]
+                prob = p_z[state,:]
+                func = function(k;  zstate = zstate, k_exo = k_exo  , c = ck, prob = prob, z = grid_z, delta = 0.012, alpha = 1/3, beta =0.987)
+                    E = (u_line.(ck).*(alpha*z*(k_exo^(alpha-1)).+(1-delta)))'*prob
+                    (1-delta)*k - k_exo - u_inv(beta*E) .+ zstate*(k^alpha)
+                end
+                a[capital, state] = fzero(func, a[capital, state])
             end # for k
-            spl = CubicSpline(k,a[:,state])
+            spl = Spline1D(a[:,1], k)
             for capital in 1:k_len  
                 k_next[capital, state] = spl(k[capital])
                 c[capital, state] = z[state]*(k[capital]^alpha) + (1-delta)*k[capital] - k_next[capital, state]
             end # for k
-        end # for z
-
-
-        error = maximum(abs.(c - c0))
-        println(error)
-        c0 = copy((1 - inert)*c + inert*c0)
-    end # while
-    return a::Array{Float64,2}, c::Array{Float64,2}
+        end # for z 
+        erro = maximum(abs.(c - c0))
+        println(erro)
+        c0 = copy(c)
+    end
+    erro = 1
+    @time while erro > tol
+        value = utility.(c) + beta*v0*p_z'
+        erro = maximum(abs.(value - v0))
+        v0 = copy(value)
+        println(erro)
+    end
+    return value::Array{Float64,2}, k_next::Array{Float64,2}, c::Array{Float64,2}, a::Array{Float64,2}
 end; # function
 
 test = @time value_function_egm()
 
-plot(test[2])
+con = test[3]
+pol = test[2]
+
+plot(EEE2(con, pol))
+
+
