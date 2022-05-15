@@ -419,75 +419,16 @@ multigrid = @time value_function_mg(100, 500, 5000)
 ############### Questão 6 ###############
 #########################################
 
-
-z = grid_z
-k_next = zeros(500, 7)
-
-@sync @distributed for state in 1:z_len
-    zstate = z[state]
-    for capital in 1:k_len
-        k_exo = k[capital]
-        func = function(k;  zstate = zstate, k_exo = k_exo  , c = c0[1,:], probs = p_z[1,:], z = grid_z, delta = 0.012, alpha = 1/3, beta =0.987)
-            E = (u_line.(c).*(alpha*z*(k_exo^(alpha-1)).+(1-delta)))'prob
-            (1-delta)*k - k_exo - u_inv(beta*E) .+ zstate*(k^alpha)
-        end
-        a[capital, state] = fzero(func, 30)
-    end # for k
-    spl = Spline1D(a[:,1], k)
-    for capital in 1:k_len  
-        k_next[capital, state] = spl(k[capital])
-        c[capital, state] = z[state]*(k[capital]^alpha) + (1-delta)*k[capital] - k_next[capital, state]
-    end # for k
-end # for z   
-capital = 1
-state = 1
-c = copy(c0)
-a = zeros(500,7)
-zstate = z[state]
-prob = p_z[state,:]
-k_exo = k[capital]
-ck = c[capital, :]
-prob = p_z[state,:]
-prob
-
-E = (u_line.(ck).*(alpha*z*(k_exo^(alpha-1)).+(1-delta)))'*prob
-
-
-
-func = function(k;  zstate = zstate, k_exo = k_exo  , c = ck, prob = prob, z = grid_z, delta = 0.012, alpha = 1/3, beta =0.987)
-    E = (u_line.(ck).*(alpha*z*(k_exo^(alpha-1)).+(1-delta)))'*prob
-    (1-delta)*k - k_exo - u_inv(beta*E) .+ zstate*(k^alpha)
+# A função erro de euler 2
+EEE2 = function(c::Array{Float64,2}, policy::Array{Float64,2}, k_len = 500, z_len = 7, k_grid = grid_k, probs = p_z, mu = 2.0, z = grid_z, alpha = 1/3, delta = 0.012)
+    euler = zeros(k_len, z_len)
+    zmat = repeat(z,1,k_len)';
+    kmat = repeat(k_grid,1,z_len);
+    con = zmat.*(kmat.^alpha) - policy + (1-delta)*kmat
+    euler = log10.(abs.(1 .- ((u_line.(c).*z'.*(policy.^(alpha-1)).+ (1-delta))*p_z)./con))
+    return euler
 end
 
-fzero(func, 30)
-k_next = zeros(500,7)
-erro = 1
-c = copy(c0)
-for i in 1:300
-    @sync @distributed for state in 1:z_len
-        zstate = z[state]
-        prob = p_z[state,:]
-        for capital in 1:k_len
-            k_exo = k[capital]
-            ck = c0[capital, :]
-            prob = p_z[state,:]
-            func = function(k;  zstate = zstate, k_exo = k_exo  , c = ck, prob = prob, z = grid_z, delta = 0.012, alpha = 1/3, beta =0.987)
-                E = (u_line.(ck).*(alpha*z*(k_exo^(alpha-1)).+(1-delta)))'*prob
-                (1-delta)*k - k_exo - u_inv(beta*E) .+ zstate*(k^alpha)
-            end
-            a[capital, state] = fzero(func, 30)
-        end # for k
-        spl = Spline1D(a[:,1], k)
-        for capital in 1:k_len  
-            k_next[capital, state] = spl(k[capital])
-            c[capital, state] = z[state]*(k[capital]^alpha) + (1-delta)*k[capital] - k_next[capital, state]
-        end # for k
-    end # for z 
-    erro = maximum(abs.(c - c0))
-    println(erro)
-    c0 = copy(c)
-
-end
 
 value_function_egm = function(;c0::Array{Float64} = c0, v0 = v0, k = grid_k, tol::Float64 = 1e-4,
     beta::Float64 = 0.987, mu::Float64 = 2.0, alpha::Float64 = 1 / 3, delta::Float64 = 0.012, rho::Float64 = 0.95, sigma::Float64 = 0.007, inert::Float64 = 0.0,
@@ -521,7 +462,6 @@ value_function_egm = function(;c0::Array{Float64} = c0, v0 = v0, k = grid_k, tol
             end # for k
         end # for z 
         erro = maximum(abs.(c - c0))
-        println(erro)
         c0 = copy(c)
     end
     erro = 1
@@ -536,9 +476,4 @@ end; # function
 
 test = @time value_function_egm()
 
-con = test[3]
-pol = test[2]
-
-plot(EEE2(con, pol))
-
-
+plot(EEE2(test[3], test[2]))
