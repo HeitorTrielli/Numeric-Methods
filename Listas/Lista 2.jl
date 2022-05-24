@@ -48,7 +48,13 @@ Threads.nthreads()
     end;
     v0 = utility.(c0);
 
-
+    u_line = function(c, mu = 2.0)
+        c^(-mu)
+    end
+    
+    u_inv = function(c, mu = 2.0)
+        c^(-1/mu)
+    end
 
 # 
 
