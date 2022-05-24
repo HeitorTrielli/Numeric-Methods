@@ -1,4 +1,4 @@
-using Plots, BenchmarkTools, Distributions, Distributed, ProfileView, Roots, Dierckx # Pacotes que estou usando
+using Plots, Distributions # Pacotes que estou usando
 
 Threads.nthreads()
 #start
@@ -41,11 +41,11 @@ Threads.nthreads()
     p_z = tauchen(z_len)[1]; # Matriz de transição de z
     k = Array(LinRange(0.75*k_ss, 1.25*k_ss, k_len)); # Grid de capital
 
+    
     ## A função de utilidade ##
     utility = function(c::Float64; mu::Float64 = 2.0)
     return (c^(1 - mu) - 1)/(1 - mu)
     end;
-    @btime c0 = zmat.*(kmat.^alpha) - delta*kmat;
     v0 = utility.(c0);
 
 
