@@ -71,6 +71,9 @@ chebroots = function(j)
     return roots
 end
 
+root = chebroots(3)
+reduce(hcat, [argmin(abs.(knorm .- root)) for root in root])
+
 
 # Função que monta o consumo em função de gamma, k e d polinômios de chebyschev
 cons = function(gamma, k, z, d)
@@ -89,22 +92,20 @@ c0 = reduce(hcat, [cons.((gamma,), k0, 1:7, d) for k0 in k0])
 
 
 # Função que retorna os resíduos dado a matriz de gammas, o capital, o estado e o numero de polinomios de chebyschev que estamos usando
-resid = function(gamma; k = grid_k, p_z = p_z, beta = beta, z_grid = grid_z, alpha = alpha, delta = delta, k_len = k_len)
-    # (gamma,) serve para tratar a matriz como uma tupla e poder aplicar o broeadcast sem dar erro (não me pergunte, eu também não entendo)
+resid = function(gamma; knorm = knorm, k = grid_k, p_z = p_z, beta = beta, z_grid = grid_z, alpha = alpha, delta = delta, k_len = k_len)
     d = Int(length(gamma)/7)
-    k0 = chebroots(d)
+    root = chebroots(d)
+    # Escolhe os k0 como os valores de k normalizado que estão mais pertos das raizes do polinomio de chebyschev de grau d
+    # Para cada raiz, ele acha o índice do argmin do valor absoluto do vetor de k normalizado - a raiz.
+    k0 = knorm[[argmin(abs.(knorm .- root)) for root in root]]
     k0level = k0*(k .- k_ss)[500].+k_ss
+
+    # Aplica a função cons (avaliada direto nos 7 estados) para cada k0. Isso retorna um array de arrays, por isso o reduce(hcat, ...)
+    # (gamma,) serve para tratar a matriz como uma tupla e poder aplicar a função direto em todos os estados de uma vez (não me pergunte, eu também não entendo)
     c0 = reduce(hcat, [cons.((gamma,), k0, 1:7, d) for k0 in k0])
-    k1 = reduce(hcat,[z_grid*(k^alpha) for k in k0level]) - c0 .+ ((1 - delta)*k0level)'
+    k1 = z_grid.*(k0level.^alpha)' - c0 .+ ((1 - delta)*k0level)'
     c1 = reinterpret(Float64, reshape([cons.((gamma,), (k1[i,j]-k_ss)/((k .- k_ss)[500]), i, d) for j in 1:d for i in 1:7], 7, d))
     resid = u_line.(c0)' - beta*(u_line.(c1).*z_grid.*(k0level.^(alpha-1)*alpha .+ (1 - delta))')'p_z'
     return resid
 end
-
-gamma = ones(7,5)
-result = nlsolve(resid, gamma)
-
-gamma = result.zero
-
-resid(gamma)
 
