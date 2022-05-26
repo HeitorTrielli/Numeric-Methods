@@ -1,4 +1,4 @@
-using Plots, Distributions # Pacotes que estou usando
+using Plots, Distributions, Optim, NLsolve # Pacotes que estou usando
 
 #start
     tauchen = function(grid_len::Int64; mu::Float64 = 0.0, sigma::Float64 = 0.007, rho::Float64 = 0.95, m::Float64 = 3.0)
@@ -51,7 +51,7 @@ using Plots, Distributions # Pacotes que estou usando
     end
 #
 
-# Normalizando o K para poder jogar nos polinomios de Chebyschev
+# Normalizando o K para ficar entre [-1, 1]
 knorm = (k .- k_ss)/((k.-k_ss)[k_len])
 
 
@@ -71,8 +71,6 @@ chebroots = function(j)
     return roots
 end
 
-gamma = ones(7,5)/5
-gamma[1,:] = [0.1, 0.2, 0.3, 0.2, 0.2]
 
 # Função que monta o consumo em função de gamma, k e d polinômios de chebyschev
 cons = function(gamma, k, z, d)
@@ -83,37 +81,30 @@ cons = function(gamma, k, z, d)
     return gamma[z,:]'cons
 end
 
-cons.((gamma,), 0.5, 1:7, 5)
+d = 1
+gamma = ones(7,1)
+k0 = chebroots(1)
 
-grid_z*k^alpha - cons.((gamma,), k, 1:7, d) .+ (1 - delta)*k
+c0 = reduce(hcat, [cons.((gamma,), k0, 1:7, d) for k0 in k0])
 
 
 # Função que retorna os resíduos dado a matriz de gammas, o capital, o estado e o numero de polinomios de chebyschev que estamos usando
-resid = function(gamma, k, z, d; p_z = p_z, beta = beta, z_grid = grid_z, alpha = alpha, delta = delta)
+resid = function(gamma; k = grid_k, p_z = p_z, beta = beta, z_grid = grid_z, alpha = alpha, delta = delta, k_len = k_len)
     # (gamma,) serve para tratar a matriz como uma tupla e poder aplicar o broeadcast sem dar erro (não me pergunte, eu também não entendo)
-    k1 = z_grid*k^alpha - cons.((gamma,), k, 1:7, d) .+ (1 - delta)*k
-    cline = zeros(7)
-    for i in 1:7
-        cline[i] = cons((gamma,), k1[i], i, d)
-    end
-
-    u_line(cons(gamma, k, z, d)) - beta*((u_line.(cline) .* (z_grid * (k ^ (alpha - 1) * alpha .+ (1 - delta))))'p_z[z, :])
-    return cline
+    d = Int(length(gamma)/7)
+    k0 = chebroots(d)
+    k0level = k0*(k .- k_ss)[500].+k_ss
+    c0 = reduce(hcat, [cons.((gamma,), k0, 1:7, d) for k0 in k0])
+    k1 = reduce(hcat,[z_grid*(k^alpha) for k in k0level]) - c0 .+ ((1 - delta)*k0level)'
+    c1 = reinterpret(Float64, reshape([cons.((gamma,), (k1[i,j]-k_ss)/((k .- k_ss)[500]), i, d) for j in 1:d for i in 1:7], 7, d))
+    resid = u_line.(c0)' - beta*(u_line.(c1).*z_grid.*(k0level.^(alpha-1)*alpha .+ (1 - delta))')'p_z'
+    return resid
 end
 
-resid(gamma, 0.5, 3, 5)
+gamma = ones(7,5)
+result = nlsolve(resid, gamma)
 
+gamma = result.zero
 
-end
+resid(gamma)
 
-
-f(x,y) = sum(x) + y
-
-f([1,2,3], 4) #-> 10
-f([1,2,3], 5) #-> 11
-
-f.([1,2,3], [4,5])    # -> error
-
-f.(([1,2,3],), [4,5]) # -> [10, 11]
-                      # this works because ([1,2,3],) is now considered
-                      # to be scalar and is broadcasted
