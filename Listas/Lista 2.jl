@@ -1,4 +1,4 @@
-using Plots, BenchmarkTools, Distributions, Distributed, ProfileView, Roots, Dierckx # Pacotes que estou usando
+using Plots, Distributions # Pacotes que estou usando
 
 Threads.nthreads()
 # Definindo funções e variáveis que vou usar no futuro
@@ -43,7 +43,12 @@ Threads.nthreads()
     c0 = zmat.*(kmat.^alpha) - delta*kmat;
     
 
+<<<<<<< HEAD
     ############# Utilidade #############
+=======
+    
+    ## A função de utilidade ##
+>>>>>>> f1a107e66047d7414f6be36d1763f323006ac150
     utility = function(c::Float64; mu::Float64 = 2.0)
     return (c^(1 - mu) - 1)/(1 - mu)
     end;
@@ -56,6 +61,10 @@ Threads.nthreads()
     u_inv = function(c, mu = 2.0)
         c^(-1/mu)
     end
+<<<<<<< HEAD
+=======
+
+>>>>>>> f1a107e66047d7414f6be36d1763f323006ac150
 # 
 
 ############ Erros de Euler #############
