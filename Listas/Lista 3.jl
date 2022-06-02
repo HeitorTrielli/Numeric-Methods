@@ -237,4 +237,3 @@ Rcol = function(A; knorm = knorm, k = grid_k, p_z = p_z, beta = beta, z_grid = g
     end
     return resid
 end
-
