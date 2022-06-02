@@ -163,10 +163,12 @@ EEEcheb = function(d;)
         end
     end
 
-    return resid'
+    return resid', c0
 end
 
-plot(k, EEEcheb(6))
+plot(k, EEEcheb(6)[2]')
+
+
 
 
 #####################################
@@ -174,7 +176,9 @@ plot(k, EEEcheb(6))
 #####################################
 
 
-# função phi
+############# Colocação #############
+
+# função phi; i é o indice da função, k é o capital que vamos aplicar a função, n é o numero de funções que vamos usar 
 phi = function(i, k, n; k_grid = grid_k)
     index = Int.(floor.(LinRange(1, length(grid_k), n)))
     k_col = k_grid[index]
@@ -209,6 +213,7 @@ phi = function(i, k, n; k_grid = grid_k)
 end
 
 
+
 conscol = function(A, k, z)
     d = Int(length(A)/7)
     cons = zeros(d)
@@ -223,6 +228,7 @@ Rcol = function(A; knorm = knorm, k = grid_k, p_z = p_z, beta = beta, z_grid = g
     d = Int(length(A)/7) # Número de polinomios que vou usar
     index = Int.(floor.(LinRange(1, length(k), d)))
     k0 = k[index]
+#    k0 = Array(LinRange(k[1], k[500], d))
     c0 = zeros(7, d)
     k1 = zeros(7, d)
     resid = zeros(7,d)
@@ -237,3 +243,33 @@ Rcol = function(A; knorm = knorm, k = grid_k, p_z = p_z, beta = beta, z_grid = g
     end
     return resid
 end
+
+
+
+
+EEEcol = function(d; A = A, k0 = grid_k, z_grid = grid_z) 
+    A = reshape((1:(7*d))/d, 7, d)
+    sol = nlsolve(Rcol, A)
+    A = sol.zero
+    zmat = repeat(z,1,k_len)'
+    kmat = repeat(k,1,z_len)  
+    c0 = (reduce(hcat, [conscol.((A,), k0, i) for i in 1:7]))'
+    k1 = (zmat.*(kmat.^alpha) + (1-delta)*kmat - c0')'
+    resid = zeros(7,500)
+    for state in 1:7
+        for w in 1:500
+            c1 = conscol.((A,), k1[state,w], 1:7) 
+            resid[state, w] = log10(abs(1 - (u_inv(beta*(((u_line.(c1)).*((z_grid*(k1[state, w]^(alpha-1)*alpha)) .+ (1-delta)))'p_z[state,:])))/c0[state,w]))
+        end
+    end
+
+    return resid', c0'
+end
+
+EEE = EEEcol(10)
+
+plot(EEEcol(10)[1])
+
+
+############# Galerkin #############
+
