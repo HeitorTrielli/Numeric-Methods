@@ -74,7 +74,8 @@ chebroots = function(j)
 end
 
 # Função que monta o consumo em função de gamma, k e d polinômios de chebyschev
-cons = function(gamma, k, z, d)
+conscheb = function(gamma, k, z)
+    d = Int.(length(gamma)/7)
     cons = zeros(d)
     for i in 1:d
         cons[i] = cheb(k, (i-1))
@@ -82,7 +83,7 @@ cons = function(gamma, k, z, d)
     return gamma[z,:]'cons
 end
 
-# Tentativa de fazer a função de residuos sem usar for
+# Tentativa de fazer a função de residuos sem usar for explicitamente
     # Função que retorna os resíduos dado a matriz de gammas, o capital, o estado e o numero de polinomios de chebyschev que estamos usando
     #resid = function(gamma; knorm = knorm, k = grid_k, p_z = p_z, beta = beta, z_grid = grid_z, alpha = alpha, delta = delta, k_len = k_len)
     #    d = Int(length(gamma)/7)
@@ -92,15 +93,15 @@ end
     #    k0 = knorm[[argmin(abs.(knorm .- root)) for root in root]]
     #    k0level = k0*(k .- k_ss)[500].+k_ss
     #    
-    #    # Aplica a função cons (avaliada direto nos 7 estados) para cada k0. Isso retorna um array de arrays, por isso o reduce(hcat, ...)
+    #    # Aplica a função conscheb (avaliada direto nos 7 estados) para cada k0. Isso retorna um array de arrays, por isso o reduce(hcat, ...)
     #    # (gamma,) serve para tratar a matriz como uma tupla e poder aplicar a função direto em todos os estados de uma vez (não me pergunte, eu também não entendo)
-    #    c0 = reduce(hcat, [cons.((gamma,), k0, 1:7, d) for k0 in k0])
+    #    c0 = reduce(hcat, [conscheb.((gamma,), k0, 1:7) for k0 in k0])
     #    k1level = z_grid.*(k0level.^alpha)' - c0 .+ ((1 - delta)*k0level)'
     #    k1norm = reshape([(k1level[i,j]-k_ss)/((k .- k_ss)[500]) for j in 1:d for i in 1:7 ], 7, d)
     #
     #    k1norm = maximum.(reshape([hcat(-1, minimum.(reshape([hcat(1, k1norm[i, j]) for j in 1:d for i in 1:7], 7, d))[i, j]) for j in 1:d for i in 1:7], 7, d))
     #    
-    #    c1 = [cons.((gamma,), k1norm[i, j], 1:7, d) for j in 1:d for i in 1:7 ]
+    #    c1 = [conscheb.((gamma,), k1norm[i, j], 1:7) for j in 1:d for i in 1:7 ]
     #    c1 = reshape(c1, 7, d)
     #    resid = reshape([u_line(c0[i]) - beta*(u_line.(c1[i]).*z_grid*(k1level[i]^(alpha-1)*alpha + 1 - delta))'p_z[i % 7 != 0 ? i % 7 : 7, :] for i in 1:(d*7)], 7, d)
     #    return resid
@@ -108,7 +109,7 @@ end
 
 
 # Função que retorna os resíduos
-R = function(gamma; knorm = knorm, k = grid_k, p_z = p_z, beta = beta, z_grid = grid_z, alpha = alpha, delta = delta, k_len = k_len)
+Rcheb = function(gamma; knorm = knorm, k = grid_k, p_z = p_z, beta = beta, z_grid = grid_z, alpha = alpha, delta = delta, k_len = k_len)
     d = Int(length(gamma)/7) # Número de polinomios que vou usar
     root = chebroots(d) # Raízes do polinomio de chebyschev de grau d
     k0 = root
@@ -120,10 +121,10 @@ R = function(gamma; knorm = knorm, k = grid_k, p_z = p_z, beta = beta, z_grid = 
     c1 = zeros(7)
     for state in 1:7
         for w in 1:d
-            c0[state, w] = cons(gamma, k0[w], state, d)
+            c0[state, w] = conscheb(gamma, k0[w], state)
             k1level[state, w] = z[state]*(k0level[w]^alpha) + (1 - delta)*k0level[w] - c0[state,w]
             k1norm[state, w] = (k1level[state, w] - k_ss)/((k .- k_ss)[500])
-            c1 = cons.((gamma,), k1norm[state,w], 1:7, d) 
+            c1 = conscheb.((gamma,), k1norm[state,w], 1:7) 
             resid[state, w] = u_line(c0[state, w]) - beta*(((u_line.(c1)).*((z_grid*(k1level[state, w]^(alpha-1)*alpha)) .+ (1-delta)))'p_z[state,:])
         end
     end
@@ -131,10 +132,11 @@ R = function(gamma; knorm = knorm, k = grid_k, p_z = p_z, beta = beta, z_grid = 
 end
 
 
-cheby = function(d)
+
+cheby_gamma = function(d)
     gamma = ones(7,2)
     for i in 2:d
-        sol = nlsolve(R, gamma)
+        sol = nlsolve(Rcheb, gamma)
         gamma = sol.zero
         if i != d
             gamma = [gamma zeros(7)]        
@@ -144,20 +146,19 @@ cheby = function(d)
 end
 
 
-EEE = function(d;) 
-    gamma = cheby(d)
+EEEcheb = function(d;) 
+    gamma = cheby_gamma(d)
     zmat = repeat(z,1,k_len)'
     kmat = repeat(k,1,z_len)  
     z_grid = grid_z
-    d = Int(length(gamma)/7)
     k0 = knorm
-    c0 = (reduce(hcat, [cons.((gamma,), k0, i, d) for i in 1:7]))'
+    c0 = (reduce(hcat, [conscheb.((gamma,), k0, i) for i in 1:7]))'
     k1level = (zmat.*(kmat.^alpha) + (1-delta)*kmat - c0')'
     k1norm = (k1level .- k_ss)/((k .- k_ss)[500])
     resid = zeros(7,500)
     for state in 1:7
         for w in 1:500
-            c1 = cons.((gamma,), k1norm[state,w], 1:7, d) 
+            c1 = conscheb.((gamma,), k1norm[state,w], 1:7) 
             resid[state, w] = log10(abs(1 - (u_inv(beta*(((u_line.(c1)).*((z_grid*(k1level[state, w]^(alpha-1)*alpha)) .+ (1-delta)))'p_z[state,:])))/c0[state,w]))
         end
     end
@@ -165,9 +166,75 @@ EEE = function(d;)
     return resid'
 end
 
-plot(k, EEE(6))
+plot(k, EEEcheb(6))
 
 
 #####################################
 ############# Questão 2 #############
 #####################################
+
+
+# função phi
+phi = function(i, k, n; k_grid = grid_k)
+    index = Int.(floor.(LinRange(1, length(grid_k), n)))
+    k_col = k_grid[index]
+    if i == 1
+        if k_col[i] <= k && k <= k_col[i+1]
+            func = (k_col[i+1] - k)/(k_col[i+1] - k_col[i])
+        elseif k < k_col[i]
+            func = 1
+        else 
+            func = 0
+        end
+
+    elseif i == length(k_col)
+        if k_col[i-1] <= k && k <= k_col[i]
+            func = (k - k_col[i-1])/(k_col[i] - k_col[i-1])
+        elseif k > k_col[i]
+            func = 1
+        else
+            func = 0
+        end
+
+    else 
+        if k_col[i-1] <= k && k <= k_col[i]
+            func = (k - k_col[i-1])/(k_col[i] - k_col[i-1])
+        elseif k_col[i] <= k && k <= k_col[i+1]
+            func = (k_col[i+1] - k)/(k_col[i+1] - k_col[i])
+        else 
+            func = 0
+        end
+    end
+    return func
+end
+
+
+conscol = function(A, k, z)
+    d = Int(length(A)/7)
+    cons = zeros(d)
+    for i in 1:d
+        cons[i] = phi(i, k, d)
+    end  
+    return A[z,:]'cons
+end
+
+
+Rcol = function(A; knorm = knorm, k = grid_k, p_z = p_z, beta = beta, z_grid = grid_z, alpha = alpha, delta = delta, k_len = k_len)
+    d = Int(length(A)/7) # Número de polinomios que vou usar
+    index = Int.(floor.(LinRange(1, length(k), d)))
+    k0 = k[index]
+    c0 = zeros(7, d)
+    k1 = zeros(7, d)
+    resid = zeros(7,d)
+    c1 = zeros(7)
+    for state in 1:7
+        for w in 1:d
+            c0[state, w] = conscol(A, k0[w], state)
+            k1[state, w] = z[state]*(k0[w]^alpha) + (1 - delta)*k0[w] - c0[state,w]
+            c1 = conscol.((A,), k1[state,w], 1:7) 
+            resid[state, w] = u_line(c0[state, w]) - beta*(((u_line.(c1)).*((z_grid*(k1[state, w]^(alpha-1)*alpha)) .+ (1-delta)))'p_z[state,:])
+        end
+    end
+    return resid
+end
+
