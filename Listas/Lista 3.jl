@@ -1,6 +1,6 @@
 using Plots, Distributions, Optim, NLsolve, BenchmarkTools, ProfileView, Distributed# Pacotes que estou usando
 
-#start
+# Usando código das listas passadas
     tauchen = function(grid_len::Int64; mu::Float64 = 0.0, sigma::Float64 = 0.007, rho::Float64 = 0.95, m::Float64 = 3.0)
 
         theta_max = m * sigma / (sqrt(1 - rho^2)) + mu # definindo o maior valor do grid
@@ -73,7 +73,7 @@ chebroots = function(j)
     return roots
 end
 
-# Função que monta o consumo em função de gamma, k e d polinômios de chebyschev
+# Função que monta o consumo em função de gamma, k e d polinômios de chebyschev. d é definido pelo tamanho de gamma
 conscheb = function(gamma, k, z; z_len = z_len::Int64)
     d = Int.(length(gamma)/z_len)
     cons = zeros(d)
@@ -83,70 +83,70 @@ conscheb = function(gamma, k, z; z_len = z_len::Int64)
     return gamma[z,:]'cons
 end
 
-# Tentativa de fazer a função de residuos via list comprehension. Tá tudo certo até computar os resíduos
-    # Função que retorna os resíduos dado a matriz de gammas, o capital, o estado e o numero de polinomios de chebyschev que estamos usando
-    #resid = function(gamma; knorm = knorm, k = grid_k, p_z = p_z, beta = beta, z_grid = grid_z, alpha = alpha, delta = delta, k_len = k_len, z_len = z_len)
-    #    d = Int(length(gamma)/z_len)
-    #    root = chebroots(d)
-    #    # Escolhe os k0 como os valores de k normalizado que estão mais pertos das raizes do polinomio de chebyschev de grau d
-    #    # Para cada raiz, ele acha o índice do argmin do valor absoluto do vetor de k normalizado - a raiz.
-    #    k0 = knorm[[argmin(abs.(knorm .- root)) for root in root]]
-    #    k0level = k0*(k .- k_ss)[k_len].+k_ss
-    #    
-    #    # Aplica a função conscheb (avaliada direto nos 7 estados) para cada k0. Isso retorna um array de arrays, por isso o reduce(hcat, ...)
-    #    # (gamma,) serve para tratar a matriz como uma tupla e poder aplicar a função direto em todos os estados de uma vez (não me pergunte, eu também não entendo)
-    #    c0 = reduce(hcat, [conscheb.((gamma,), k0, 1:z_len) for k0 in k0])
-    #    k1level = z_grid.*(k0level.^alpha)' - c0 .+ ((1 - delta)*k0level)'
-    #    k1norm = reshape([(k1level[i,j]-k_ss)/((k .- k_ss)[k_len]) for j in 1:d for i in 1:z_len ], z_len, d)
-    #
-    #    k1norm = maximum.(reshape([hcat(-1, minimum.(reshape([hcat(1, k1norm[i, j]) for j in 1:d for i in 1:z_len], z_len, d))[i, j]) for j in 1:d for i in 1:z_len], z_len, d))
-    #    
-    #    c1 = [conscheb.((gamma,), k1norm[i, j], 1:z_len) for j in 1:d for i in 1:z_len ]
-    #    c1 = reshape(c1, z_len, d)
-    #    resid = reshape([u_line(c0[i]) - beta*(u_line.(c1[i]).*z_grid*(k1level[i]^(alpha-1)*alpha + 1 - delta))'p_z[i % z_len != 0 ? i % z_len : z_len, :] for i in 1:(d*z_len)], z_len, d)
-    #    return resid
-    # end
+#= Tentativa de fazer a função de residuos via list comprehension. Tá tudo certo até computar os resíduos
+    Função que retorna os resíduos dado a matriz de gammas, o capital, o estado e o numero de polinomios de chebyschev que estamos usando
+    resid = function(gamma; knorm = knorm, k = grid_k, p_z = p_z, beta = beta, z_grid = grid_z, alpha = alpha, delta = delta, k_len = k_len, z_len = z_len)
+        d = Int(length(gamma)/z_len)
+        root = chebroots(d)
+        # Escolhe os k0 como os valores de k normalizado que estão mais pertos das raizes do polinomio de chebyschev de grau d
+        # Para cada raiz, ele acha o índice do argmin do valor absoluto do vetor de k normalizado - a raiz.
+        k0 = knorm[[argmin(abs.(knorm .- root)) for root in root]]
+        k0level = k0*(k .- k_ss)[k_len].+k_ss
+        
+        # Aplica a função conscheb (avaliada direto nos 7 estados) para cada k0. Isso retorna um array de arrays, por isso o reduce(hcat, ...)
+        # (gamma,) serve para tratar a matriz como uma tupla e poder aplicar a função direto em todos os estados de uma vez (não me pergunte, eu também não entendo)
+        c0 = reduce(hcat, [conscheb.((gamma,), k0, 1:z_len) for k0 in k0])
+        k1level = z_grid.*(k0level.^alpha)' - c0 .+ ((1 - delta)*k0level)'
+        k1norm = reshape([(k1level[i,j]-k_ss)/((k .- k_ss)[k_len]) for j in 1:d for i in 1:z_len ], z_len, d)
+    
+        k1norm = maximum.(reshape([hcat(-1, minimum.(reshape([hcat(1, k1norm[i, j]) for j in 1:d for i in 1:z_len], z_len, d))[i, j]) for j in 1:d for i in 1:z_len], z_len, d))
+        
+        c1 = [conscheb.((gamma,), k1norm[i, j], 1:z_len) for j in 1:d for i in 1:z_len ]
+        c1 = reshape(c1, z_len, d)
+        resid = reshape([u_line(c0[i]) - beta*(u_line.(c1[i]).*z_grid*(k1level[i]^(alpha-1)*alpha + 1 - delta))'p_z[i % z_len != 0 ? i % z_len : z_len, :] for i in 1:(d*z_len)], z_len, d)
+        return resid
+     end
+=#
 
-
-# Função que retorna os resíduos
+# Função que retorna os resíduos dado gamma. Já leva em conta k e z. 
 Rcheb = function(gamma; knorm = knorm::Array{Float64,1}, k = grid_k::Array{Float64,1}, p_z = p_z::Array{Float64,2},
     beta = beta::Float64, z_grid = grid_z::Array{Float64,1}, alpha = alpha::Float64,
     delta = delta::Float64, k_len = k_len::Int64, z_len = z_len::Int64)
     d = Int(length(gamma)/z_len) # Número de polinomios que vou usar
-    root = chebroots(d) # Raízes do polinomio de chebyschev de grau d
-    k0 = root
-    k0level = k0*(k .- k_ss)[k_len].+k_ss
-    c0 = zeros(z_len,d)
-    k1level = zeros(z_len,d)
-    k1norm = zeros(z_len,d)
-    resid = zeros(z_len,d)
-    c1 = zeros(z_len)
+    k0 = chebroots(d) # Vamos fazer R ser 0 nas raízes do polinômio de chebyschev de grau d
+    k0level = k0*(k .- k_ss)[k_len].+k_ss # Trazendo as raízes pro grid de capital
+    c0, k1level, k1norm, resid, c1, = zeros(z_len,d), zeros(z_len,d), zeros(z_len,d), zeros(z_len,d), zeros(z_len,d) # Pré-alocando memória
+    #= Primeiro achamso c_chapeu em k0, depois usamos esse valor para achar k1
+    depois normalizamos k1 para poder jogar na função c_chapeu em cada estado da natureza
+    e depois calculamos os resíduos. @sync @distributed é para paralelizar o for=#
     @sync @distributed for state in 1:z_len
         for w in 1:d
-            c0[state, w] = conscheb(gamma, k0[w], state)
-            k1level[state, w] = z[state]*(k0level[w]^alpha) + (1 - delta)*k0level[w] - c0[state,w]
-            k1norm[state, w] = (k1level[state, w] - k_ss)/((k .- k_ss)[k_len])
+            c0[state, w] = conscheb(gamma, k0[w], state) 
+            k1level[state, w] = z[state]*(k0level[w]^alpha) + (1 - delta)*k0level[w] - c0[state,w] 
+            k1norm[state, w] = (k1level[state, w] - k_ss)/((k .- k_ss)[k_len]) 
             c1 = conscheb.((gamma,), k1norm[state,w], 1:z_len) 
-            resid[state, w] = u_line(c0[state, w]) - beta*(((u_line.(c1)).*((z_grid*(k1level[state, w]^(alpha-1)*alpha)) .+ (1-delta)))'p_z[state,:])
-        end
-    end
+            resid[state, w] = u_line(c0[state, w]) - beta*(((u_line.(c1)).*((z_grid*(k1level[state, w]^(alpha-1)*alpha)) .+ (1-delta)))'p_z[state,:]) 
+        end # for state
+    end # for w
     return resid
 end
 
+# Função que acha o gamma ótimo dado o numero de polinômios de chebyschev que queremos usar, no caso d.
 cheby_gamma = function(d::Int64; z_len = z_len::Int64)
+
     gamma::Array{Float64,2} = ones(z_len,2)
     for i in 2:d
-        sol = nlsolve(Rcheb, gamma)
+        sol = nlsolve(Rcheb, gamma) # nlsolve acha o zero de um sistema de equações não linear
         gamma = sol.zero
-        if i != d
+        if i != d # Se ainda não temos uma matriz 7xd então continua aumentando o gamma que vai ser chutado, dado o gamma ótimo da ultima iteração
             gamma = [gamma zeros(z_len)]        
         end
     end
     return gamma
 end
 
-
-EEEcheb = function(d; z_len = z_len::Int64) 
+# Função que acha os erros de euler (e ja acha o consumo também) dado o numero de polinômios de chebyschev que a gente quer
+EEEcheb = function(d; z_len = z_len::Int64, knorm = knorm::Array{Float64, 1}, k_len = k_len::Int64) 
     gamma = cheby_gamma(d)
     zmat = repeat(z,1,k_len)'
     kmat = repeat(k,1,z_len)  
@@ -263,12 +263,11 @@ EEE2 = function(A; k0 = grid_k::Array{Float64,1}, z_grid = grid_z::Array{Float64
         end
     end
 
-    return resid'::Array{Float64,1}, c0'::Array{Float64,1}
+    return Array(resid')::Array{Float64,2}, Array(c0')::Array{Float64,2}
 end
 
-@time nlsolve(Rcol, A)
+sol_col = @time nlsolve(Rcol, A)
 
-sol_col = ProfileView.@profview nlsolve(Rcol, A)
 A_col = sol_col.zero
 EEE_col = EEE2(A_col)
 
@@ -298,8 +297,6 @@ phi_low = function(i::Int64, k::Float64; k_col = k_col::Array{Float64, 1})
     return func
 end
 
-
-
 phi_high = function(i::Int64, k::Float64; k_col = k_col::Array{Float64, 1})
 
     if i == 1
@@ -322,7 +319,6 @@ phi_high = function(i::Int64, k::Float64; k_col = k_col::Array{Float64, 1})
     return func
 end
 
-
 Rcol2 = function(A::Array{Float64, 2}, k::Float64, z::Int64; 
     p_z = p_z::Array{Float64, 2}, beta = beta::Float64, z_grid = grid_z::Array{Float64, 1},
     alpha = alpha::Float64, delta = delta::Float64, k_len = k_len::Int64, z_len = z_len::Int64)
@@ -333,7 +329,6 @@ Rcol2 = function(A::Array{Float64, 2}, k::Float64, z::Int64;
     resid::Float64 = u_line(c0) - beta*(((u_line.(c1)).*((z_grid*(k1^(alpha-1)*alpha)) .+ (1-delta)))'p_z[z,:])
     return resid
 end
-
 
 gausscheb = function(A; nr = 15, z = grid_z::Array{Float64, 1}, z_len = z_len::Int64, k_col = k_col::Array{Float64, 1})
     d = Int(length(A)/z_len)
@@ -381,6 +376,5 @@ end
 
 
 sol_galerkin = @time nlsolve(gausscheb, A)
-
-A_galerkin = test.zero
+A_galerkin = sol_galerkin.zero
 plot(EEE2(A_galerkin)[1])
