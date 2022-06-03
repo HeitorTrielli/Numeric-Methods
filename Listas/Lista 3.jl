@@ -178,7 +178,8 @@ high = maximum(cons_level)
 A = Array(reshape(LinRange(low,high, z_len*d), z_len, d)) # Chute inicial para os proximos métodos
 index = Int.(floor.(LinRange(1, length(grid_k), d))) # Achando os índices dos capitais que vão servir como pontos limite
 k_col = grid_k[index] # Escolhendo esses capitais
-nr = 15 # Numero de raízes de Chebyschev que vão 
+nr = 11 # Numero de raízes de Chebyschev que vão ser usadas para calcular a integral no método de Galerkin
+
 
 ############# Colocação #############
 # função phi; i é o indice da função, k é o capital que vamos aplicar a função, n é o numero de funções que vamos usar 
@@ -263,13 +264,6 @@ phi_low = function(i::Int64, k::Float64; k_col = k_col::Array{Float64, 1})
     if i == 1
         k < k_col[i] ? func = 1.0 : func = 0.0
 
-    elseif i == length(k_col)
-        if k_col[i-1] <= k && k <= k_col[i]
-            func = (k - k_col[i-1])/(k_col[i] - k_col[i-1])
-        else 
-            func = 0.0
-        end
-
     else 
         if k_col[i-1] <= k && k <= k_col[i]
             func = (k - k_col[i-1])/(k_col[i] - k_col[i-1])
@@ -283,16 +277,9 @@ end
 # Análogo a phi, mas apenas levando em conta a parte de k in [k_i, k_{i+1}]
 phi_high = function(i::Int64, k::Float64; k_col = k_col::Array{Float64, 1})
 
-    if i == 1
-        if k_col[i] <= k && k <= k_col[i+1]
-            func = (k_col[i+1] - k)/(k_col[i+1] - k_col[i])
-        else
-            func = 0.0
-        end
-
-    elseif i == length(k_col)
-            k > k_col[i] ? func = 1.0 : func = 0.0          
-
+    if i == length(k_col)
+        k > k_col[i] ? func = 1.0 : func = 0.0          
+  
     else 
         if k_col[i] <= k && k <= k_col[i+1]
             func = (k_col[i+1] - k)/(k_col[i+1] - k_col[i])
@@ -381,9 +368,10 @@ end
 ######################################
 ############# Resultados #############
 ######################################
+
 #= Código para rodar o benchmark. Demora, por isso botei em comentário
 ben_cheb = @benchmark solve_cheb(6) seconds = 60
-ben_col = @benchmark solve_col(A) seconds = 60
+ben_col = @benchmark solve_col(A) seconds = 120
 ben_gal = @benchmark solve_gal(A) seconds = 300 =#
 
 sol_cheb = @time solve_cheb(6)
@@ -423,14 +411,14 @@ como numerador e quem é tratado como denominador. =#
 plot_compare = function(method_1::String, method_2::String;cheb = sol_cheb, col = sol_col, gal = sol_gal)
     labels = ["State 1" "State 2" "State 3" "State 4" "State 5" "State 6" "State 7"]
     if (method_1 == "cheb" && method_2 == "col") || (method_2 == "cheb" && method_1 == "col")
-        euler = plot(k, (cheb.euler ./ gal.euler) .- 1, label = labels, title = "Erros de Euler \n Chebyschev / Colocation")
-        c = plot(k, (cheb.c ./ gal.c) .- 1, label = labels, legend = :bottomright, title = "Função Consumo \n Chebyschev / Colocation")
-        pol = plot(k, (cheb.pol ./ gal.pol) .- 1, label = labels,title = "Função Política \n Chebyschev / Colocation")
+        euler = plot(k, (cheb.euler ./ col.euler) .- 1, label = labels, title = "Erros de Euler \n Chebyschev / Colocation")
+        c = plot(k, (cheb.c ./ col.c) .- 1, label = labels, legend = :bottomright, title = "Função Consumo \n Chebyschev / Colocation")
+        pol = plot(k, (cheb.pol ./ col.pol) .- 1, label = labels,title = "Função Política \n Chebyschev / Colocation")
 
     elseif (method_1 == "cheb" && method_2 == "gal") || (method_2 == "cheb" && method_1 == "gal")
-        euler = plot(k, (cheb.euler ./ col.euler) .- 1, label = labels, legend = :bottomleft, title = "Erros de Euler \n Chebyschev / Galerkin")
-        c = plot(k, (cheb.c ./ col.c) .- 1, label = labels, title = "Função Consumo \n Chebyschev / Galerkin")
-        pol = plot(k, (cheb.pol ./ col.pol) .- 1, label = labels, legend = :bottomright, title = "Função Política \n Chebyschev / Galerkin")
+        euler = plot(k, (cheb.euler ./ gal.euler) .- 1, label = labels, legend = :bottomleft, title = "Erros de Euler \n Chebyschev / Galerkin")
+        c = plot(k, (cheb.c ./ gal.c) .- 1, label = labels, title = "Função Consumo \n Chebyschev / Galerkin")
+        pol = plot(k, (cheb.pol ./ gal.pol) .- 1, label = labels, legend = :bottomright, title = "Função Política \n Chebyschev / Galerkin")
 
     else
         euler = plot(k, (gal.euler ./ col.euler) .- 1, label = labels, legend = :bottomright, title = "Erros de Euler \n Galerkin / Colocação")
