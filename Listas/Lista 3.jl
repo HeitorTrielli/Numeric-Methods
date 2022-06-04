@@ -1,5 +1,7 @@
 using Plots, Distributions, NLsolve, BenchmarkTools, Distributed # Pacotes que estou usando
+
 Threads.nthreads() # Quantas threads estamos usando
+
 # Usando código das listas passadas
     tauchen = function(grid_len::Int64; mu::Float64 = 0.0, sigma::Float64 = 0.007, rho::Float64 = 0.95, m::Float64 = 3.0)
 
@@ -24,36 +26,32 @@ Threads.nthreads() # Quantas threads estamos usando
 
         return (prob = probs::Array{Float64,2}, grid = Array(grid)::Array{Float64,1})
     end;
-    # Definindo as variáveis
     beta, mu, alpha, delta, rho, sigma = 0.987, 2.0, 1/3, 0.012, 0.95, 0.007;
-
-    # Definindo o capital de steady state
     k_ss = (alpha / (1 / beta - 1 + delta))^(1 / (1 - alpha));
     z_len = 7;
     k_len = 500;
-    grid_z = exp.(tauchen(z_len).grid); # Valores que exp(z_t) pode tomar 
+    grid_z = exp.(tauchen(z_len).grid);
     grid_k = Array(LinRange(0.75*k_ss, 1.25*k_ss, k_len));
-    z = copy(grid_z); # Valores que exp(z_t) pode tomar 
-    p_z = tauchen(z_len).prob; # Matriz de transição de z
-    k = Array(LinRange(0.75*k_ss, 1.25*k_ss, k_len)); # Grid de capital
-    zmat = repeat(z,1,k_len)'
-    kmat = repeat(k,1,z_len)  
+    z = copy(grid_z);
+    p_z = tauchen(z_len).prob;
+    k = Array(LinRange(0.75*k_ss, 1.25*k_ss, k_len)); 
+    zmat = repeat(z,1,k_len)';
+    kmat = repeat(k,1,z_len);
     utility = function(c::Float64; mu::Float64 = 2.0)
         return (c^(1 - mu) - 1)/(1 - mu)
     end;
-
     u_line = function(c, mu = 2.0)
         c^(-mu)
-    end
-    
+    end;
     u_inv = function(c, mu = 2.0)
         c^(-1/mu)
-    end
+    end;
 #
 
 #####################################
 ############# Questão 1 #############
 #####################################
+
 
 # Os gráficos e os tempos estão todos chamados no fim do código #
 
@@ -170,6 +168,7 @@ end
 #####################################
 ############# Questão 2 #############
 #####################################
+
 
 d = 11 # Numero de pontos limite que vamos usar
 cons_level = zmat.*(kmat.^alpha) - delta*kmat # Sei que o consumo não deve fugir muito dessa matriz, então vou usar ela para guiar o chute inicial
@@ -369,11 +368,13 @@ end
 ############# Resultados #############
 ######################################
 
+
 #= Código para rodar o benchmark. Demora, por isso botei em comentário
 ben_cheb = @benchmark solve_cheb(6) seconds = 60
 ben_col = @benchmark solve_col(A) seconds = 120
 ben_gal = @benchmark solve_gal(A) seconds = 300 =#
 
+# Achando os resultados de cada método
 sol_cheb = @time solve_cheb(6)
 sol_col = @time solve_col(A)
 sol_gal = @time solve_gal(A)
@@ -403,7 +404,6 @@ plot_cke = function(method::String; cheb = sol_cheb, col = sol_col, gal = sol_ga
     return (euler = euler, c = c, pol = pol, pol_zoom = pol_zoom)
 end
 
-
 #= Função que vai plottar quantos % um método desviou do outro 1.) nos erros de euler; 2.) na função consumo, 3.) na função política.
 Como input você deve escolher dois métodos dentre: "gal", "col" ou "cheb" (tem que chamar a função em strings). Para comparar Galerkin
 com a colocação tanto faz quais strings você coloca. A ordem não importa em nenhum dos casos. O título do grafico mostra quem é tratado
@@ -411,9 +411,9 @@ como numerador e quem é tratado como denominador. =#
 plot_compare = function(method_1::String, method_2::String;cheb = sol_cheb, col = sol_col, gal = sol_gal)
     labels = ["State 1" "State 2" "State 3" "State 4" "State 5" "State 6" "State 7"]
     if (method_1 == "cheb" && method_2 == "col") || (method_2 == "cheb" && method_1 == "col")
-        euler = plot(k, (cheb.euler ./ col.euler) .- 1, label = labels, title = "Erros de Euler \n Chebyschev / Colocation")
-        c = plot(k, (cheb.c ./ col.c) .- 1, label = labels, legend = :bottomright, title = "Função Consumo \n Chebyschev / Colocation")
-        pol = plot(k, (cheb.pol ./ col.pol) .- 1, label = labels,title = "Função Política \n Chebyschev / Colocation")
+        euler = plot(k, (cheb.euler ./ col.euler) .- 1, label = labels, title = "Erros de Euler \n Chebyschev / Colocação")
+        c = plot(k, (cheb.c ./ col.c) .- 1, label = labels, legend = :bottomright, title = "Função Consumo \n Chebyschev / Colocação")
+        pol = plot(k, (cheb.pol ./ col.pol) .- 1, label = labels,title = "Função Política \n Chebyschev / Colocação")
 
     elseif (method_1 == "cheb" && method_2 == "gal") || (method_2 == "cheb" && method_1 == "gal")
         euler = plot(k, (cheb.euler ./ gal.euler) .- 1, label = labels, legend = :bottomleft, title = "Erros de Euler \n Chebyschev / Galerkin")
@@ -429,36 +429,40 @@ plot_compare = function(method_1::String, method_2::String;cheb = sol_cheb, col 
     return (euler = euler, c = c, pol = pol)
 end
 
+# Erros de Euler, consumo, função política e função política com zoom do método de Chebyschev
 plots_cheb = plot_cke("cheb")
 plots_cheb.euler
 plots_cheb.c
 plots_cheb.pol
 plots_cheb.pol_zoom
 
+# Erros de Euler, consumo, função política e função política com zoom do método da colocação
 plots_col = plot_cke("col")
 plots_col.euler
 plots_col.c
 plots_col.pol
 plots_col.pol_zoom
 
-
+# Erros de Euler, consumo, função política e função política com zoom do método de Galerkin
 plots_gal = plot_cke("gal")
 plots_gal.euler
 plots_gal.c
 plots_gal.pol
 plots_gal.pol_zoom
 
-
+# Comparação dos erros de Euler, consumo e função política dos métodos de Chebyschev e Galerkin
 cheb_gal = plot_compare("cheb", "gal")
 cheb_gal.euler
 cheb_gal.c
 cheb_gal.pol
 
+# Comparação dos erros de Euler, consumo e função política dos métodos de Chebyschev e colocação
 cheb_col = plot_compare("cheb", "col")
 cheb_col.euler
 cheb_col.c
 cheb_col.pol
 
+# Comparação dos erros de Euler, consumo e função política dos métodos de Galerkin e colocação
 gal_col = plot_compare("gal", "col")
 gal_col.euler
 gal_col.c
