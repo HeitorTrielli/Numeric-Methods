@@ -1,4 +1,4 @@
-using Plots, Distributions # Pacotes que estou usando
+using Plots, BenchmarkTools, Distributions, Distributed, ProfileView, Roots, Dierckx # Pacotes que estou usando
 
 Threads.nthreads()
 # Definindo funções e variáveis que vou usar no futuro
@@ -506,7 +506,7 @@ plot(EEE(monotone), title = "Monotone", label = labels)
 
 
 println("Concavity")
-concave =  value_function_concave() 
+concave = value_function_concave() 
 plot(concave[2], concave[1], title = "Concave Value", legend = :topleft, label = labels)
 plot(concave[2], title = "Concave Policy", legend = :topleft, label = labels)
 plot(concave[2], concave[3], title = "Concave Consumption", legend = :topleft, label = labels)
@@ -515,7 +515,7 @@ plot(EEE(concave), title = "Concave", label = labels)
 
 
 println("Monotone + Concavity")
-vf =  value_function() 
+vf = value_function() 
 plot(vf[2], vf[1], title = "Monotone + Concave Value", legend = :topleft, label = labels)
 plot(vf[2], title = "Monotone + Concave Policy", legend = :topleft, label = labels)
 plot(vf[2], vf[3], title = "Monotone + Concave Consumption", legend = :topleft, label = labels)
@@ -524,7 +524,7 @@ plot(EEE(vf), title = "Monotone + Concave", label = labels)
 
 
 println("Accelerator")
-accelerator =  value_function_accelerator() 
+accelerator = value_function_accelerator() 
 plot(accelerator[2], accelerator[1], title = "Accelerator Value", legend = :topleft, label = labels)
 plot(accelerator[2], title = "Accelerator Policy", legend = :topleft, label = labels)
 plot(accelerator[2], accelerator[3], title = "Accelerator Consumption", legend = :topleft, label = labels)
@@ -533,7 +533,7 @@ plot(EEE(accelerator), title = "Accelerator", label = labels)
 
 
 println("Accelerator Brute")
-accel_brute =  value_function_accelerator_brute() 
+accel_brute = value_function_accelerator_brute() 
 plot(accel_brute[2], accel_brute[1], title = "Accelerator Brute Value", legend = :topleft, label = labels)
 plot(accel_brute[2], title = "Accelerator Brute Policy", legend = :topleft, label = labels)
 plot(accel_brute[2], accel_brute[3], title = "Accelerator Brute Consumption", legend = :topleft, label = labels)
@@ -542,7 +542,7 @@ plot(EEE(accel_brute), title = "Accelerator Brute", label = labels)
 
 
 println("Multigrid")
-multigrid = @time value_function_mg(100, 500, 5000) 
+multigrid = value_function_mg(100, 500, 5000) 
 plot(multigrid[2], multigrid[1], title = "Multigrid Value", legend = :topleft, label = labels)
 plot(multigrid[2], title = "Multigrid Policy", legend = :topleft, label = labels)
 plot(multigrid[2], multigrid[3], title = "Multigrid Consumption", legend = :topleft, label = labels)
@@ -551,7 +551,7 @@ plot(EEE(multigrid, k_len = 5000, k_grid = grid_kmg), title = "Multigrid", label
 
 
 println("EGM")
-egm =  value_function_egm(c0 = brute_force[3])
+egm = value_function_egm(c0 = brute_force[3])
 plot(egm[1], title = "EGM Value", legend = :topleft, label = labels)
 plot(egm[2], title = "EGM Policy", legend = :topleft, label = labels)
 plot(egm[3], title = "EGM Consumption", legend = :topleft, label = labels)
