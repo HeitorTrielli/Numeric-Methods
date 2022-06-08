@@ -1,4 +1,4 @@
-using Plots, BenchmarkTools, Distributions, Distributed, ProfileView, Roots, Dierckx # Pacotes que estou usando
+using Plots, BenchmarkTools, Distributions, Distributed, ProfileView, Roots, #Dierckx # Pacotes que estou usando
 
 Threads.nthreads()
 # Definindo funções e variáveis que vou usar no futuro
@@ -480,6 +480,80 @@ EEE2 = function(c::Array{Float64,2}, policy::Array{Float64,2}, c_line::Array{Flo
     end 
     return euler
 end
+
+######## Força bruta aulas ########
+value_function_brute2 = function(;v_0::Array{Float64} = v0, tol::Float64 = 1e-4,
+    beta::Float64 = 0.987, mu::Float64 = 2.0, alpha::Float64 = 1 / 3, delta::Float64 = 0.012, rho::Float64 = 0.95, sigma::Float64 = 0.007, inert::Float64 = 0.0,
+    kss::Float64 = k_ss, k_len::Int64 = 500, z_len::Int64 = 7)
+
+    z = exp.(tauchen(z_len)[2]); # Valores que exp(z_t) pode tomar 
+    p_z = tauchen(z_len)[1]; # Matriz de transição de z
+    k = Array(LinRange(0.75*kss, 1.25*kss, k_len)); # Grid de capital
+
+    # Pré-alocando os valores da função política, da atualização da função valor e a função valor
+    k_line, v_next = zeros(k_len, z_len), zeros(k_len, z_len)
+    value = v_0 
+    error = 1.0
+
+    ro = [z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0 for capital in 1:k_len, state in 1:z_len]
+    k_possible = [k[ro[i,j]] for i in 1:k_len, j in 1:z_len]
+    ro_possible = [z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k_possible[capital, state] for capital in 1:k_len, state in 1:z_len]
+    s = zeros(k_len, z_len)
+    while error > tol # Checa se convergiu
+        v_possible = [value[ro[i,j],:] for i in 1:k_len, j in 1:z_len]
+        val = [utility.(ro_possible[capital, state]) + beta*v_possible[capital, state]*p_z[state,:] for capital in 1:k_len, state in 1:z_len]
+        s = argmax.(val)
+        v_next = [val[capital, state][s[capital,state]] for capital in 1:k_len, state in 1:z_len]
+        error = maximum(abs.(value - v_next)) # Checa o erro
+        value = (1 - inert)*v_next + inert*value
+    end # while
+    k_line = k[s]
+    # Aqui acho a matriz de consumo de forma matricial
+    zmat = repeat(z,1,k_len)'
+    kmat = repeat(k,1,z_len)
+    c = zmat.*(kmat.^alpha) - k_line + (1-delta)*kmat
+    return (val = value::Array{Float64,2}, pol = k_line::Array{Float64,2}, c = c::Array{Float64,2}, iter = iter)
+end; # function
+
+test = @time value_function_brute()
+teste = @time value_function_brute2()
+
+value_function_brute = function(;v_0::Array{Float64} = v0, tol::Float64 = 1e-4,
+    beta::Float64 = 0.987, mu::Float64 = 2.0, alpha::Float64 = 1 / 3, delta::Float64 = 0.012, rho::Float64 = 0.95, sigma::Float64 = 0.007, inert::Float64 = 0.0,
+    kss::Float64 = k_ss, k_len::Int64 = 500, z_len::Int64 = 7)
+
+    z = exp.(tauchen(z_len)[2]); # Valores que exp(z_t) pode tomar 
+    p_z = tauchen(z_len)[1]; # Matriz de transição de z
+    k = Array(LinRange(0.75*kss, 1.25*kss, k_len)); # Grid de capital
+
+    # Pré-alocando os valores da função política, da atualização da função valor e a função valor
+    k_line, v_next = zeros(k_len, z_len), zeros(k_len, z_len)
+    value = v_0 
+    error = 1.0
+    s = 1
+    while error > tol # Checa se convergiu
+        @sync @distributed for state in 1:z_len #@sync @distributed faz a parelização sincronizada
+            for capital in 1:k_len  
+                k_possible = k[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0] # Escolhendo os capitais onde o consumo é positivo
+                v_possible = value[z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k .> 0, :] # Escolhendo as linhas onde os capitais são positivos
+                # val é um vetor com a função valor aplicada em cada possivel escolha para k'
+                val = utility.(z[state]*(k[capital]^alpha) + (1 - delta)*k[capital] .- k_possible) + beta*v_possible*p_z[state, :]
+                s = argmax(val) # Acha o índice do máximo
+                v_next[capital, state] = val[s] # Define o valor como o máximo
+                k_line[capital, state] = k_possible[s] # Define o capital como o capital do índice do máximo
+            end # for k
+        end # for z
+        error = maximum(abs.(value - v_next)) # Checa o erro
+        value = copy((1 - inert)*v_next + inert*value)
+    end # while
+
+    # Aqui acho a matriz de consumo de forma matricial
+    zmat = repeat(z,1,k_len)'
+    kmat = repeat(k,1,z_len)   
+    c = zmat.*(kmat.^alpha) - k_line + (1-delta)*kmat
+    return value::Array{Float64,2}, k_line::Array{Float64,2}, c::Array{Float64,2}
+end; # function
+
 
 #########################################
 ############### Plotando ################
