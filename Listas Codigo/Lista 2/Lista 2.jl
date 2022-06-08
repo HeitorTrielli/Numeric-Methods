@@ -27,9 +27,9 @@ Threads.nthreads()
     end;
     # Definindo as variáveis
     beta, mu, alpha, delta, rho, sigma = 0.987, 2.0, 1/3, 0.012, 0.95, 0.007;
-
+    
+    
     # Definindo o capital de steady state
-
     k_ss = (alpha / (1 / beta - 1 + delta))^(1 / (1 - alpha));
     z_len = 7;
     k_len = 500;
