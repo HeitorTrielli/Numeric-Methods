@@ -52,7 +52,7 @@ a_min = -1.0
 a_max = 4.0
 grid_a = Array(LinRange(a_min, a_max, a_len))
 a = copy(grid_a)
-zmat = repeat(grid_z, 1, a_len)'
+zmat = repeat(w, 1, a_len)'
 amat = repeat(grid_a, 1, z_len)
 
 r = 0.045
@@ -75,9 +75,9 @@ value_function_brute = function(;r = r::Float64, value = v0::Matrix{Float64}, to
     v_next, s = zeros(a_len, z_len), zeros(a_len, z_len)
 
     @sync @distributed for state in 1:z_len # setting what will remain unchanged
-        ro[1:a_len, state] .= (grid_z[state] + (1+r)*a[asset] .- a .> 0 for asset in 1:a_len) # Budget constraint (BC)
-        a_possible[1:a_len, state] .= (a[grid_z[state] + (1+r)*a[asset] .- a .> 0] for asset in 1:a_len) # Assets that obey BC
-        c_possible[1:a_len, state] .= (grid_z[state] + (1+r)*a[asset] .- a_possible[asset, state] for asset in 1:a_len) # Consumption that obeys BC
+        ro[1:a_len, state] .= (w[state] + (1+r)*a[asset] .- a .> 0 for asset in 1:a_len) # Budget constraint (BC)
+        a_possible[1:a_len, state] .= (a[w[state] + (1+r)*a[asset] .- a .> 0] for asset in 1:a_len) # Assets that obey BC
+        c_possible[1:a_len, state] .= (w[state] + (1+r)*a[asset] .- a_possible[asset, state] for asset in 1:a_len) # Consumption that obeys BC
     end # for
 
     error = 1.0
@@ -132,8 +132,7 @@ iterate_pi = function(policy; p_0 = 1, tol = 1e-4::Float64, pol = pol::Matrix{Fl
     return pi_zero::Array{Float64,2}
 end
 
-statdist = @time iterate_pi(pol, p_0 = statdist)
-
+statdist = @time iterate_pi(pol)
 ed = sum(statdist.*pol)
 
 rce = function(r_low, r_high; v0 = v0::Matrix{Float64}, tol = 1e-4)
@@ -193,9 +192,10 @@ end
 
 rstar1 = @time rce(0.04, 0.045)
 
-solve_star = value_function_brute(r = rstar)
-
-plot(solve_star.val)
+solve_star = value_function_brute(r = rstar1)
+statdist_star = @time iterate_pi(solve_star.pol)
+plot(statdist_star)
+plot(solve_star.c)
 
 ##############################
 ########### item d ###########
@@ -205,7 +205,7 @@ a_min = -1.0
 a_max = 4.0
 grid_a = Array(LinRange(a_min, a_max, a_len))
 a = copy(grid_a)
-zmat = repeat(grid_z, 1, a_len)'
+zmat = repeat(w, 1, a_len)'
 amat = repeat(grid_a, 1, z_len)
 
 r = 0.045
@@ -232,7 +232,7 @@ a_min = -1.0
 a_max = 4.0
 grid_a = Array(LinRange(a_min, a_max, a_len))
 a = copy(grid_a)
-zmat = repeat(grid_z, 1, a_len)'
+zmat = repeat(w, 1, a_len)'
 amat = repeat(grid_a, 1, z_len)
 
 c0 = zmat+r*amat
