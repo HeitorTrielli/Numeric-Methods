@@ -1,7 +1,7 @@
+module Simular
+
 include("Tauchen.jl")
 include("Rouwenhorst.jl")
-
-module Simular
 
 using Random, Distributions, Main.Tauchen, Main.Rouwenhorst
 

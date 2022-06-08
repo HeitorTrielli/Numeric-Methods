@@ -3,7 +3,7 @@ include("Tauchen.jl")
 include("Rouwenhorst.jl")
 include("Simular.jl")
 using Plots, GLM, Pkg, DataFrames, PrettyTables, RegressionTables  # Pacotes que eu vou usar
-using .Tauchen, .Rouwenhorst, .Simular # Módulos que estou usando
+using .Simular, .Tauchen, .Rouwenhorst, # Módulos que estou usando
 
 ################
 ## Questão 1: ##
