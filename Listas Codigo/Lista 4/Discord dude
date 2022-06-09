@@ -1,0 +1,164 @@
+using Plots, Distributions, NLsolve, BenchmarkTools, Distributed, ProfileView, Roots, LinearAlgebra # Pacotes que estou usando
+
+Threads.nthreads() # Quantas threads estamos usando
+
+# Usando código das listas passadas
+    tauchen = function(grid_len::Int64; mu::Float64 = 0.0, sigma::Float64 = 0.007, rho::Float64 = 0.95, m::Float64 = 3.0)
+
+        theta_max = m * sigma / (sqrt(1 - rho^2)) + mu # definindo o maior valor do grid
+        theta_min = - theta_max + 2 * mu # definindo o menor valor do grid
+        grid = Array(LinRange(theta_min, theta_max, grid_len)) # Cria um vetor de n pontos entre theta_max e theta_min em que a distancia entre os pontos sequencias é igual
+
+        d = Normal(mu, 1) # d vira normal(mu,1), que será usado para computar a PDF dos erros na hora de achar as probabilidades de transição
+        delta = (maximum(grid) - minimum(grid)) / (length(grid) - 1) # distância dos pontos subsequentes do grid
+
+        vec_1 = cdf(d,((minimum(grid) .- rho * grid .+ delta / 2) / sigma)) # vetor das probabilidades de ir para o menor valor do grid, dado cada estado anterior do grid; cdf(d, x) retorna a cdf da distribuição d no valor x
+        vec_n = 1 .- cdf(d,((maximum(grid) .- rho * grid .- delta / 2) / sigma)) # análogo para o maior valor do grid
+        grid_interno = grid[2:(length(grid) - 1)] # valores não extremos do grid
+
+        pij = function(j, i = grid) # função que vai computar o vetor de probabilidades de ir para o estado (não extremo) j dado cada estado anterior do grid
+            cdf(d,((j + delta/2 .- rho * i) / sigma)) - cdf(d,((j - delta / 2 .- rho * i) / sigma))                             
+        end
+
+        mat_interna = reduce(hcat, pij.(grid_interno))  # aplica pij em cada ponto do grid interno; reduce: transforma o vetor de vetores em uma matriz
+        
+        probs = [vec_1 mat_interna vec_n] # gerando a matriz de transição
+
+        return (prob = probs::Array{Float64,2}, grid = Array(grid)::Array{Float64,1})
+    end;
+#
+
+beta, gamma, rho, sigma = 0.96,  1.0001, 0.9, 0.01
+alpha = 1/3
+zlen, alen = 9, 201
+
+utility = function(c::Float64; mu::Float64 = gamma)
+    return (c^(1 - mu) - 1)/(1 - mu)
+end;
+
+
+######################################
+############### item a ###############
+######################################
+
+grid_z = exp.(tauchen(zlen, rho = rho, sigma = sigma).grid); # Valores que exp(z_t) pode tomar 
+pz = tauchen(zlen, rho = rho, sigma = sigma).prob; # Matriz de transição de z
+
+######################################
+############### item b ###############
+######################################
+
+a_min = -10.0
+a_max = 20.0
+grid_a = Array(LinRange(a_min, a_max, alen))
+a = copy(grid_a)
+zmat = repeat(w, 1, alen)'
+amat = repeat(grid_a, 1, zlen)
+
+r = 0.040
+c0 = zmat+r*amat
+v0 = utility.(c0)/(1-beta)
+
+function value_function_brute(r::Float64; value::Matrix{Float64} = v0,
+    tol::Float64 = 1e-4, inert::Float64 = 0.0, a_len::Int64 = alen, z_len::Int64 = zlen,
+    w::Vector{Float64} = grid_z, p_z::Matrix{Float64} = pz, a::Vector{Float64} = grid_a
+    )::NTuple{3, Matrix{Float64}}
+    # I have no idea why you were making anonymous functions and passing 
+    # around namedtuples but don't... makes debugging much harder than it should be
+    
+    # Pre alocating is not type declaration, this is
+    ArrMat::Type = Matrix{Array} # for convenience
+    ro::ArrMat = Matrix{Array}(undef, a_len, z_len)
+    # Since everything was undef a z, similar is also convenient
+    a_possible::ArrMat = similar(ro)
+    c_possible::ArrMat = similar(ro)
+    val::ArrMat = similar(ro)
+    v_possible::ArrMat = similar(ro)
+    v_next, s = zeros(a_len, z_len), zeros(a_len, z_len)
+     # you seem to have missed where I said pre-typing these speeds stuff up too
+     a_range::UnitRange{Int64} = 1:a_len
+     z_range::UnitRange{Int64} = 1:z_len
+ 
+    @sync @distributed for state in z_range # setting what will remain unchanged
+             ro[a_range, state] .= (grid_z[state] + (1+r)*a[asset] .- a .> 0 for asset in a_range)
+             a_possible[a_range, state] .= (a[grid_z[state] + (1+r)*a[asset] .- a .> 0] for asset in a_range)# Assets that obey BC
+             c_possible[a_range, state] .= (grid_z[state] + (1+r)*a[asset] .- a_possible[asset, state] for asset in a_range)# Consumption that obeys BC
+     end # for
+ 
+     error::Float64 = 1.0
+     while error > tol # checking convergence
+        @sync @distributed for state in z_range
+                v_possible[a_range, state] .= (value[ro[asset, state], :] for asset in a_range)# Value function for each asset that obeys BC
+                val[a_range, state] .= (utility.(c_possible[asset, state]) + beta*v_possible[asset, state]*p_z[state,:] for asset in a_range) # Expected value of each of those assets
+        end # for
+
+        s = argmax.(val) # Taking the maximum
+
+        @sync @distributed for state in z_range 
+            @inbounds @views v_next[a_range, state] .= (val[asset, state][s[asset,state]] for asset in a_range) # finding the next value function
+        end # for
+        error = maximum(abs, value - v_next)
+        value = (1 - inert)*v_next + inert*value # updating the value function
+    end # while
+
+    a_line = a[s] # Optimal policy function
+
+    # ???????
+    # Finding the optimal consumption
+    zmat = repeat(w, 1, a_len)'
+    amat = repeat(a, 1, z_len)
+    c = zmat+(1+r)*amat - a_line
+
+    return value, a_line, c # multiple return is a tuple
+end # function
+
+@time value_function_brute(0.04)
+
+
+function value_function_brute3(;r = r::Float64, value = v0::Matrix{Float64}, tol = 1e-4::Float64, inert = 0.0::Float64, 
+    a_len = alen::Int64, z_len = zlen::Int64, w = w::Vector{Float64}, p_z = pz::Array{Float64, 2}, a = grid_a::Vector{Float64})
+
+    #Pre alocating
+    ro, a_possible, c_possible = Matrix{Array}(undef, a_len, z_len), Matrix{Array}(undef, a_len, z_len), Matrix{Array}(undef, a_len, z_len)
+    val, v_possible = Matrix{Array}(undef, a_len, z_len), Matrix{Array}(undef, a_len, z_len) 
+    v_next, s = zeros(a_len, z_len), zeros(a_len, z_len)
+
+    @sync @distributed for state in 1:z_len # setting what will remain unchanged
+        ro[1:a_len, state] .= (w[state] + (1+r)*a[asset] .- a .> 0 for asset in 1:a_len) # Budget constraint (BC)
+        a_possible[1:a_len, state] .= (a[w[state] + (1+r)*a[asset] .- a .> 0] for asset in 1:a_len) # Assets that obey BC
+        c_possible[1:a_len, state] .= (w[state] + (1+r)*a[asset] .- a_possible[asset, state] for asset in 1:a_len) # Consumption that obeys BC
+    end # for
+
+    error = 1.0
+
+    while error > tol # checking convergence
+        v_possible = Matrix{Array}(undef, a_len, z_len)
+        @sync @distributed for state in 1:z_len
+            v_possible[1:a_len, state] .= (value[ro[asset, state], :] for asset in 1:a_len) # Value function for each asset that obeys BC
+            val[1:a_len, state] .= (utility.(c_possible[asset, state]) + beta*v_possible[asset, state]*p_z[state,:] for asset in 1:a_len) # Expected value of each of those assets
+        end # for
+
+        s = argmax.(val) # Taking the maximum
+
+        @sync @distributed for state in 1:z_len 
+            v_next[1:a_len, state] .= (val[asset, state][s[asset,state]] for asset in 1:a_len) # finding the next value function
+        end # for
+        error = maximum(abs.(value - v_next))
+        value = (1 - inert)*v_next + inert*value # updating the value function
+    end # while
+    a_line = a[s] # Optimal policy function
+
+    # Finding the optimal consumption
+    zmat = repeat(w, 1, a_len)'
+    amat = repeat(a, 1, z_len)
+    c = zmat+(1+r)*amat - a_line
+    return (val = value::Array{Float64,2}, pol = a_line::Array{Float64,2}, c = c::Array{Float64,2}) 
+end; # function
+
+bench_mine = @benchmark value_function_brute3(r = 0.04) seconds = 400
+
+bench_disc = @benchmark value_function_brute(0.04) seconds = 400
+
+@code_warntype value_function_brute3(r = 0.04)
+
+@code_warntype value_function_brute(0.04)
