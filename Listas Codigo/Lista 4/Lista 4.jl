@@ -28,7 +28,7 @@ Threads.nthreads() # Quantas threads estamos usando
     end;
 #
 
-beta, gamma, rho, sigma = 0.96,  1.0001, 0.9, 0.001
+beta, gamma, rho, sigma = 0.96,  1.0001, 0.9, 0.01
 alpha = 1/3
 z_len, a_len = 9, 201
 
@@ -48,20 +48,17 @@ p_z = tauchen(z_len, rho = rho, sigma = sigma).prob; # Matriz de transição de 
 ############### item b ###############
 ######################################
 
-a_min = -1.0
-a_max = 4.0
+a_min = -10.0
+a_max = 20.0
 grid_a = Array(LinRange(a_min, a_max, a_len))
 a = copy(grid_a)
 zmat = repeat(w, 1, a_len)'
 amat = repeat(grid_a, 1, z_len)
 
-r = 0.045
+r = 0.040
 c0 = zmat+r*amat
 v0 = utility.(c0)/(1-beta)
 a = Array(LinRange(a_min, a_max, a_len))
-
-
-typeof(v0)
 
 
 #= r is the interest rate, value is the initial guess for the value function, a_len is the length of the asset grid, z_len is the
@@ -114,26 +111,30 @@ pi_t = function(policy, pi_last; a_len = a_len::Int64, z_len = z_len::Int64, p_z
     Q = [p_z[:, state]'.*(policy.== grid_a[asset]) for asset in 1:a_len, state in 1:z_len]
     pi_t = [sum(pi_last.*Q[asset, state]) for asset in 1:a_len, state in 1:z_len]
     return pi_t::Matrix{Float64}
+
 end
 
-iterate_pi = function(policy; p_0 = 1, tol = 1e-4::Float64, pol = pol::Matrix{Float64})
+iterate_pi = function(policy; p_0 = 1, tol = 1e-8::Float64, pol = pol::Matrix{Float64})
     erro = 1.0
     if p_0 == 1
         pi_zero = pi_t(policy, ones(a_len, z_len)/(a_len*z_len))
     else
         pi_zero = p_0
     end
-
-    while erro > tol
+    iter = 0
+    while erro > tol && iter < 100
         pi_one = pi_t(policy, pi_zero)
         erro = maximum(abs.(pi_one - pi_zero))
         pi_zero = 1*pi_one
+        println(iter, ": erro = ", erro)
+        iter += 1
     end
     return pi_zero::Array{Float64,2}
 end
 
 statdist = @time iterate_pi(pol)
 ed = sum(statdist.*pol)
+plot(a, sum(statdist, dims = 2))
 
 rce = function(r_low, r_high; v0 = v0::Matrix{Float64}, tol = 1e-4)
     if r_low > r_high
@@ -141,8 +142,7 @@ rce = function(r_low, r_high; v0 = v0::Matrix{Float64}, tol = 1e-4)
         r_low = copy(r_high)
         r_high = raux
     end
-    
-    
+        
     pol_low = value_function_brute(r = r_low ).pol
     pol_high = value_function_brute(r = r_high).pol
     
@@ -162,53 +162,53 @@ rce = function(r_low, r_high; v0 = v0::Matrix{Float64}, tol = 1e-4)
     pol_mid = @time value_function_brute(r = r_mid).pol
     statdist_mid = @time iterate_pi(pol_mid)
     ed_mid = sum(statdist_mid.*pol_mid)
-    
+    println("ed = ", ed_low, "; ", ed_mid, "; ", ed_high, " Δr = ", r_high - r_low, " r = ", r_low, "; ", (r_high+r_low)/2, "; ", r_high)
+
     if ed_mid > 0
         r_high = copy(r_mid)
         r_mid = (r_high+r_low)/2
+        ed_high = ed_mid
     else
         r_low = copy(r_mid)
         r_mid = (r_low + r_high)/2
+        ed_low = ed_mid
     end    
 
-    while abs(ed_mid) > tol && r_high - r_low > tol/1000
+    while abs(ed_mid) > tol && r_high - r_low > 1e-8
 
         r_mid = (r_low+r_high)/2
         pol_mid = @time value_function_brute(r = r_mid).pol
-        statdist_mid = @time iterate_pi(pol_mid, p_0 = statdist_mid)
+        statdist_mid = @time iterate_pi(pol_mid)
         ed_mid = sum(statdist_mid.*pol_mid)
-        
+        display(plot(a, statdist_mid, title = r_mid))
         if ed_mid > 0
             r_high = copy(r_mid)
             r_mid = (r_high+r_low)/2
+            ed_high = ed_mid
         else
             r_low = copy(r_mid)
             r_mid = (r_low + r_high)/2
+            ed_low = ed_mid
         end    
-        println("ed = ", ed_mid, " Δr = ", r_high - r_low)
+        println("ed = ", ed_low, "; ", ed_mid, "; ", ed_high, " Δr = ", r_high - r_low, " r = ", r_low, "; ", r_mid, "; ", r_high)
     end
     return r_mid
 end
 
-rstar1 = @time rce(0.04, 0.045)
 
+rstar1 = @time rce(0.039, 0.04)
+
+rstar1
 solve_star = value_function_brute(r = rstar1)
 statdist_star = @time iterate_pi(solve_star.pol)
-plot(statdist_star)
-plot(solve_star.c)
+plot(a, sum(statdist_star, dims = 2))
 
 ##############################
 ########### item d ###########
 ##############################
 rho = 0.97
-a_min = -1.0
-a_max = 4.0
-grid_a = Array(LinRange(a_min, a_max, a_len))
-a = copy(grid_a)
-zmat = repeat(w, 1, a_len)'
-amat = repeat(grid_a, 1, z_len)
 
-r = 0.045
+r = 0.039
 c0 = zmat+r*amat
 v0 = utility.(c0)/(1-beta)
 
@@ -216,25 +216,21 @@ w = exp.(tauchen(z_len, rho = rho, sigma = sigma)[2]); # Valores que exp(z_t) po
 p_z = tauchen(z_len, rho = rho, sigma = sigma)[1]; # Matriz de transição de z
 a = Array(LinRange(a_min, a_max, a_len))
 
-pol2 = @time value_function_brute(r = 0.045).pol
-statdist = @time iterate_pi(pol2)
-ed = sum(statdist.*pol)
+pol2 = @time value_function_brute(r = rstar1).pol
+statdist2 = @time iterate_pi(pol2)
+ed = sum(statdist2.*pol2)
+plot(statdist2)
 
-rstar2 = rce(0.04, 0.045)
-# Deu o mesmo que rstar 1
+rstar2 = rce(0.039, 0.04)
+# Deu o mesmo que rstar 1 na pratica com relação a juros, mas a distribuição parece mudar um pouco
 
 ##############################
 ########### item e ###########
 ##############################
-rho = 0.96
+rho = 0.9
 gamma = 5.0
-a_min = -1.0
-a_max = 4.0
-grid_a = Array(LinRange(a_min, a_max, a_len))
-a = copy(grid_a)
-zmat = repeat(w, 1, a_len)'
-amat = repeat(grid_a, 1, z_len)
 
+r = 0.03
 c0 = zmat+r*amat
 v0 = utility.(c0)/(1-beta)
 
@@ -242,9 +238,10 @@ w = exp.(tauchen(z_len, rho = rho, sigma = sigma)[2]); # Valores que exp(z_t) po
 p_z = tauchen(z_len, rho = rho, sigma = sigma)[1]; # Matriz de transição de z
 a = Array(LinRange(a_min, a_max, a_len))
 
-pol3 = @time value_function_brute(r = 0.035).pol
-statdist = @time iterate_pi(pol3)
-ed = sum(statdist.*pol)
+pol3 = @time value_function_brute().pol
+statdist3 = @time iterate_pi(pol3)
+ed = sum(statdist3.*pol3)
+plot(statdist3)
 
-rstar3 = rce(0.035, 0.04)
+rstar3 = rce(0.03, 0.034)
 # deu menor que rstar1
