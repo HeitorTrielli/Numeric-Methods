@@ -1,4 +1,4 @@
-using Plots, Distributions, NLsolve, BenchmarkTools, Distributed, ProfileView, Roots, LinearAlgebra # Pacotes que estou usando
+using Plots, Distributions, NLsolve, BenchmarkTools, Distributed, ProfileView, Roots, LinearAlgebra, PrettyTables # Pacotes que estou usando
 
 Threads.nthreads() # Quantas threads estamos usando
 
@@ -28,10 +28,9 @@ Threads.nthreads() # Quantas threads estamos usando
     end;
 #
 
-
 beta, gamma, rho, sigma = 0.96,  1.0001, 0.9, 0.01
 alpha = 1/3
-zlen, alen = 9, 151
+zlen = 9
 
 utility = function(c::Float64; mu::Float64 = gamma)
     return (c^(1 - mu) - 1)/(1 - mu)
@@ -42,6 +41,7 @@ end;
 u_inv = function(c, mu = 2.0)
     c^(-1/mu)
 end;
+
 ######################################
 ############### item a ###############
 ######################################
@@ -49,20 +49,25 @@ end;
 w = exp.(tauchen(zlen, rho = rho, sigma = sigma).grid); # Valores que exp(z_t) pode tomar 
 pz = tauchen(zlen, rho = rho, sigma = sigma).prob; # Matriz de transição de z
 
+pretty_table(round.(p_z', digits = 3), backend = :latex)
+
+
+
 ######################################
 ############### item b ###############
 ######################################
 
-a_min = -10.0
-a_max = 30.0
-grid_a = Array(LinRange(a_min, a_max, alen))
-a = copy(grid_a)
-zmat = repeat(w, 1, alen)'
-amat = repeat(grid_a, 1, zlen)
+a_min = -15.0;
+a_max = 30.0;
+grid_a = Array(LinRange(a_min, a_max, 351));
+alen = length(grid_a);
+a = copy(grid_a);
+zmat = repeat(w, 1, alen)';
+amat = repeat(grid_a, 1, zlen);
 
-r = 0.038
-c0 = zmat+r*amat
-v0 = utility.(c0)/(1-beta)
+r = 0.04;
+c0 = zmat+r*amat;
+v0 = utility.(c0)/(1-beta);
 
 
 #= r is the interest rate, value is the initial guess for the value function, alen is the length of the asset grid, zlen is the
@@ -119,11 +124,6 @@ function value_function_brute(;r = r::Float64, value = v0::Matrix{Float64}, tol 
     return (val = value::Array{Float64,2}, pol = a_line::Array{Float64,2}, c = c::Array{Float64,2}) 
 end; # function
 
-
-solved = @time value_function_brute()
-pol = solved.pol
-
-
 pi_t = function(policy, pi_last; a_len = alen::Int64, z_len = zlen::Int64, p_z = pz::Array{Float64,2})
     Q = [p_z[:, state]'.*(policy.== grid_a[asset]) for asset in 1:a_len, state in 1:z_len]
     pi_t = [sum(pi_last.*Q[asset, state]) for asset in 1:a_len, state in 1:z_len]
@@ -148,10 +148,13 @@ iterate_pi = function(policy; p_0 = 1, tol = 1e-6::Float64, pol = pol::Matrix{Fl
     return pi_zero::Array{Float64,2}
 end
 
-statdist = @time iterate_pi(pol)
-ed = sum(statdist.*pol)
 
-rce = function(r_low, r_high; v0 = v0::Matrix{Float64}, tol = 1e-4)
+solved = @time value_function_brute();
+statdist = @time iterate_pi(solved.pol);
+ed = sum(statdist.*solved.pol)
+
+
+rce = function(r_low, r_high; v0 = v0::Matrix{Float64}, tol = 1e-3)
     if r_low > r_high
         raux = copy(r_low)
         r_low = copy(r_high)
@@ -191,7 +194,7 @@ rce = function(r_low, r_high; v0 = v0::Matrix{Float64}, tol = 1e-4)
         ed_low = ed_mid
     end    
 
-    while abs(ed_mid) > tol && r_high - r_low > 1e-12
+    while abs(ed_mid) > tol && r_high - r_low > tol^4
 
         r_mid = (r_low+r_high)/2
         pol_mid = @time value_function_brute(r = r_mid).pol
@@ -213,92 +216,142 @@ rce = function(r_low, r_high; v0 = v0::Matrix{Float64}, tol = 1e-4)
     return r_mid
 end
 
+println("R STAR 1")
+println("R STAR 1")
+println("R STAR 1")
 
-rstar1 = @time rce(0.036, 0.038)
+rstar1 = @time rce(0.025, 0.045)
 rstar1
 solve_star = @time value_function_brute(r = rstar1)
 statdist_star = @time iterate_pi(solve_star.pol)
+ed1 = sum(statdist_star.*solve_star.pol)
+
 
 ##############################
 ########### item d ###########
 ##############################
 rho = 0.97
-r = 0.038
+r = rstar2
 
 c0 = zmat+r*amat
 v0 = utility.(c0)/(1-beta)
 w = exp.(tauchen(z_len, rho = rho, sigma = sigma)[2]); # Valores que exp(z_t) pode tomar 
 pz = tauchen(z_len, rho = rho, sigma = sigma)[1]; # Matriz de transição de z
+println("R STAR 2")
+println("R STAR 2")
+println("R STAR 2")
+rstar2 = @time rce(0.025, 0.045)
 
-pol2 = @time value_function_brute().pol
-statdist2 = @time iterate_pi(pol2)
-ed = sum(statdist2.*pol2)
-
-rstar2 = rce(0.036, 0.038)
-
-solve_star2 = @time value_function_brute(r = rstar2)
-statdist_star2 = @time iterate_pi(solve_star2.pol)
+solve_star2 = @time value_function_brute(r = rstar2);
+plot(solve_star2.val)
+statdist_star2 = @time iterate_pi(solve_star2.pol);
+ed2 = sum(statdist_star2.*solve_star2.pol)
 # Deu um juros um pouco menor!
 
 ##############################
 ########### item e ###########
 ##############################
-rho = 0.9
-gamma = 5.0
+rho = 0.9;
+gamma = 5.0;
 
-r = 0.024
-c0 = zmat+r*amat
-v0 = utility.(c0)/(1-beta)
+r = rstar3;
+c0 = zmat+r*amat;
+v0 = utility.(c0)/(1-beta);
 
 w = exp.(tauchen(z_len, rho = rho, sigma = sigma)[2]); # Valores que exp(z_t) pode tomar 
 p_z = tauchen(z_len, rho = rho, sigma = sigma)[1]; # Matriz de transição de z
-a = Array(LinRange(a_min, a_max, alen))
+a = Array(LinRange(a_min, a_max, alen));
 
-pol3 = @time value_function_brute().pol
-statdist3 = @time iterate_pi(pol3)
-ed = sum(statdist3.*pol3)
 
-rstar3 = rce(0.024, 0.026)
+println("R STAR 3")
+println("R STAR 3")
+println("R STAR 3")
 
-solve_star3 = @time value_function_brute(r = rstar3)
-statdist_star3 = @time iterate_pi(solve_star3.pol)
-ed = sum(statdist_star3)
+rstar3 = @time rce(0.025, 0.045)
+solve_star3 = @time value_function_brute(r = rstar3);
+statdist_star3 = @time iterate_pi(solve_star3.pol);
+ed3 = sum(statdist_star3.*solve_star3.pol);
 # deu menor que rstar2 
 
 
+##############################
+########### item e ###########
+##############################
+sigma = 0.05;
+gamma = 1.0001;
+
+r = rstar4;
+c0 = zmat+r*amat;
+v0 = utility.(c0)/(1-beta);
+
+w = exp.(tauchen(z_len, rho = rho, sigma = sigma)[2]); # Valores que exp(z_t) pode tomar 
+p_z = tauchen(z_len, rho = rho, sigma = sigma)[1]; # Matriz de transição de z
+
+
+
+println("R STAR 4")
+println("R STAR 4")
+println("R STAR 4")
+
+rstar4 = @time rce(0.025, 0.045)
+solve_star4 = @time value_function_brute(r = rstar4);
+statdist_star4 = @time iterate_pi(solve_star4.pol);
+ed4 = sum(statdist_star4.*solve_star4.pol);
+
 
 ######## Gráficos ########
-round(rstar1, digits = 4)
-round(rstar2, digits = 4)
-round(rstar3, digits = 4)
-
+round(rstar1, digits = 5)
+round(rstar2, digits = 5)
+round(rstar3, digits = 5)
+round(rstar4, digits = 5)
+surface(w, a, statdist_star, camera = (37, 40))
 
 
 plot_caed = function(method::String)
     labels = ["State 1" "State 2" "State 3" "State 4" "State 5" "State 6" "State 7" "State 8" "State 9"]
-    if method == "item c"
-        c = plot(a, solved.c, label = labels, title = "Consumo baseline \n r = 0.038", legend = :topleft)
-        val = plot(a, solved.val, label = labels, title = "Função valor baseline \n r = 0.38", legend = :topleft)
-        pol = plot(a, solved.pol, label = labels, title = "Função politica baseline \n r = 0.38", legend = :topleft)
-        dist = plot(a, sum(statdist, dims = 2), label = labels, title = "Consumo baseline \n r = 0.38", legend = :topleft)
+    if method == "item b"
+        c = plot(a, solved.c, label = labels, title = "Consumo baseline \n r = 0.04", legend = :topleft)
+        val = plot(a, solved.val, label = labels, title = "Função valor baseline \n r = 0.04", legend = :topleft)
+        pol = plot(a, solved.pol, label = labels, title = "Função politica baseline \n r = 0.04", legend = :topleft)
+        dist = plot(a, sum(statdist, dims = 2), label = "", title = "Distribuição estacionária baseline \n r = 0.04", legend = :topleft)
+    elseif method == "item c"
+        c = plot(a, solve_star.c, label = labels, title = "Consumo baseline \n r = 0.03958", legend = :topleft)
+        val = plot(a, solve_star.val, label = labels, title = "Função valor baseline \n r = 0.03958", legend = :topleft)
+        pol = plot(a, solve_star.pol, label = labels, title = "Função politica baseline \n r = 0.03958", legend = :topleft)
+        dist = plot(a, sum(statdist_star, dims = 2), label = "", title = "Distribuição estacionária baseline \n r = 0.03958", legend = :topleft)
     elseif method == "item d"
-        c = plot(a, solve_star.c, label = labels, title = "Consumo baseline \n r = 0.0376", legend = :topleft)
-        val = plot(a, solve_star.val, label = labels, title = "Função valor baseline \n r = 0.0376", legend = :topleft)
-        pol = plot(a, solve_star.pol, label = labels, title = "Função politica baseline \n r = 0.0376", legend = :topleft)
-        dist = plot(a, sum(statdist_star, dims = 2), label = labels, title = "Consumo baseline \n r = 0.0376", legend = :topleft)
+        c = plot(a, solve_star2.c, label = labels, title = "Consumo ρ = 0.97 \n r = 0.03952", legend = :topleft)
+        val = plot(a, solve_star2.val, label = labels, title = "Função valor ρ = 0.97 \n r = 0.03952", legend = :topleft)
+        pol = plot(a, solve_star2.pol, label = labels, title = "Função politica ρ = 0.97 \n r = 0.03952", legend = :topleft)
+        dist = plot(a, sum(statdist_star2, dims = 2), label = "",title = "Distribuição estacionária ρ = 0.97 \n r = 0.03952", legend = :topleft)
     elseif method == "item e"
-        c = plot(a, solve_star2.c, label = labels, title = "Consumo ρ = 0.97 \n r = 0.0374", legend = :topleft)
-        val = plot(a, solve_star2.val, label = labels, title = "Função valor ρ = 0.97 \n r = 0.0374", legend = :topleft)
-        pol = plot(a, solve_star2.pol, label = labels, title = "Função politica ρ = 0.97 \n r = 0.0374", legend = :topleft)
-        dist = plot(a, sum(statdist_star2, dims = 2), label = labels, title = "Consumo ρ = 0.97 \n r = 0.0374", legend = :topleft)
+        c = plot(a, solve_star3.c, label = labels, title = "Consumo γ = 5 \n r = 0.03194", legend = :topleft)
+        val = plot(a, solve_star3.val, label = labels, title = "Função valor γ = 5 \n r = 0.03194", legend = :bottomright)
+        pol = plot(a, solve_star3.pol, label = labels, title = "Função politica γ = 5 \n r = 0.03194", legend = :topleft)
+        dist = plot(a, sum(statdist_star3, dims = 2), label = "", title = "Distribuição estacionária γ = 5 \n r = 0.03194", legend = :topleft)
     else
-        c = plot(a, solve_star3.c, label = labels, title = "Consumo γ = 5 \n r = 0.0.0247", legend = :topleft)
-        val = plot(a, solve_star3.val, label = labels, title = "Função valor γ = 5 \n r = 0.0247", legend = :topleft)
-        pol = plot(a, solve_star3.pol, label = labels, title = "Função politica γ = 5 \n r = 0.0247", legend = :topleft)
-        dist = plot(a, sum(statdist_star3, dims = 2), label = labels, title = "Consumo γ = 5 \n r = 0.0247", legend = :topleft)
+        c = plot(a, solve_star4.c, label = labels, title = "Consumo σ = 0.05 \n r = 0.03938", legend = :topleft)
+        val = plot(a, solve_star4.val, label = labels, title = "Função valor σ = 0.05 \n r = 0.03938", legend = :topleft)
+        pol = plot(a, solve_star4.pol, label = labels, title = "Função politica σ = 0.05 \n r = 0.03938", legend = :topleft)
+        dist = plot(a, sum(statdist_star4, dims = 2), label = "", title = "Distribuição estacionária σ = 0.05 \n r = 0.03938", legend = :topleft)
     end
     return (val = val, c = c, pol = pol, dist = dist)
 end
+
+ed
+ed1
+ed2
+ed3
+ed4
+
+
+# plotando o item b
+item_b = plot_caed("item b")
+item_b.c
+item_b.pol
+item_b.dist
+item_b.val
+
 
 # plotando o item c
 item_c = plot_caed("item c")
@@ -306,6 +359,7 @@ item_c.c
 item_c.pol
 item_c.dist
 item_c.val
+
 
 ## plotando o item d
 item_d = plot_caed("item d")
@@ -321,9 +375,30 @@ item_e.pol
 item_e.dist
 item_e.val
 
+
 ## plotando o item f
 item_f = plot_caed("item f")
 item_f.c
 item_f.pol
 item_f.dist
 item_f.val
+
+asd=
+bsd = 3
+
+#=
+EEE = function(c, policy, r; a_len = alen, z_len = zlen, a = grid_a, probs = p_z, w = w)
+    euler = zeros(a_len, z_len)
+    for state in 1:z_len
+        for capital in 1:a_len
+            index = findall(policy[capital, state] .== a)[1] ## Índice para saber qual linha da matriz de consumo levar em conta na esperança
+            c_line = c[index,:] ## Consumo dado a escolha
+            E = ((u_line.(c_line).*((policy[capital, state]*(1+r) .+ w)))'*p_z[state,:])
+            euler[capital, state] = log10(abs(1 - u_inv(beta*E) / c[capital,state]))  # Erro de euler
+        end
+    end 
+    return euler
+end
+
+plot(EEE(solve_star.c, solve_star.pol, 0.038))
+=#
